@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    function isAdmin() {
+      return isSignedIn() && myRole() == 'admin';
+    }
+    function isTeacher() {
+      return isSignedIn() && myRole() == 'teacher';
+    }
+    function isStaff() {
+      return isAdmin() || isTeacher();
+    }
+
+    // ── users (teachers, students, admin) ───────────────────────────────
+    // The backend (Firebase Admin SDK) bypasses these rules entirely, so
+    // account creation and archiving from the admin/teacher UI keep working
+    // even though writes are locked down here for the client SDK.
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isStaff())
+                  // Forgot Password page runs before login and needs to check
+                  // "does a teacher with this email exist?" — scoped so it can
+                  // only ever see teacher docs, never students/admins.
+                  || resource.data.role == 'teacher';
+      // Only allow a signed-in user to touch their own doc from the client
+      // (e.g. nothing here — creation/archiving goes through the backend).
+      allow write: if false;
+    }
+
+    // ── modules (module CRUD used by Manage Modules) ────────────────────
+    match /modules/{moduleId} {
+      allow read: if isSignedIn();
+      allow create, update: if isStaff();
+      allow delete: if false; // modules are archived, never hard-deleted
+    }
+
+    // ── lessons (uploaded FSL lesson videos) ─────────────────────────────
+    match /lessons/{lessonId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isTeacher();
+    }
+
+    // ── student_progress / game_sessions (read-only from admin UI) ──────
+    match /student_progress/{docId} {
+      allow read: if isStaff();
+      allow write: if false; // written by the student mobile app, not this admin
+    }
+    match /game_sessions/{docId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
+    // ── password_reset_requests ──────────────────────────────────────────
+    match /password_reset_requests/{reqId} {
+      // Any signed-in visitor can create one from the Forgot Password page
+      // (that page runs before login, so this must stay open to creates)
+      allow create: if true;
+      allow read, update: if isAdmin();
+      allow delete: if false;
+    }
+  }
+}

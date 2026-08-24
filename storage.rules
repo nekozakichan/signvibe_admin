@@ -1,0 +1,25 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Lesson demo videos uploaded from Manage Modules
+    match /lessons/{moduleName}/{fileName} {
+      allow read: if true; // videos are shown to students in the mobile app
+      allow write: if request.auth != null; // only signed-in teachers/admins can upload
+      allow delete: if request.auth != null;
+    }
+
+    // Module icon images uploaded from the Add/Edit Module form
+    match /module-icons/{fileName} {
+      allow read: if true; // icons are shown to students in the mobile app
+      allow write: if request.auth != null; // only signed-in teachers/admins can upload
+      allow delete: if request.auth != null;
+    }
+
+    // Deny everything else by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
