@@ -23,48 +23,77 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // Students (active only)
-      const studentSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
-      const students = studentSnap.docs.map((d) => d.data()).filter((s) => s.status !== 'archived');
+      try {
+        // Students (active only)
+        const studentSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+        const students = studentSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((s) => s.status !== 'archived');
 
-      // Lessons
-      const lessonsSnap = await getDocs(collection(db, 'lessons'));
-      const lessons = lessonsSnap.docs.map((d) => d.data());
-      const publishedLessons = lessons.filter((l) => l.status === 'published');
+        // Lessons
+        const lessonsSnap = await getDocs(collection(db, 'lessons'));
+        const lessons = lessonsSnap.docs.map((d) => d.data());
+        const publishedLessons = lessons.filter((l) => l.status === 'published');
 
-      // Lessons grouped by module, for the chart
-      const byModule = {};
-      publishedLessons.forEach((l) => {
-        const key = l.module_title || 'Uncategorized';
-        byModule[key] = (byModule[key] || 0) + 1;
-      });
+        // Lessons grouped by module, for the chart
+        const byModule = {};
+        publishedLessons.forEach((l) => {
+          const key = l.module_title || 'Uncategorized';
+          byModule[key] = (byModule[key] || 0) + 1;
+        });
 
-      setTotalStudents(students.length);
-      setLessonsPublished(publishedLessons.length);
+        // Lessons-completed per student, from student_progress — the users doc's
+        // lessons_completed / total_points fields are never written, so we derive
+        // both from the real activity collections instead (same fix used on the
+        // Class Overview, Reports, and Students List screens).
+        const progressSnap = await getDocs(
+          query(collection(db, 'student_progress'), where('is_completed', '==', true))
+        );
+        const lessonCounts = {};
+        progressSnap.docs.forEach((d) => {
+          const sid = d.data().student_id;
+          if (sid) lessonCounts[sid] = (lessonCounts[sid] || 0) + 1;
+        });
 
-      if (students.length > 0) {
-        const totalLessonsCount = publishedLessons.length || 1;
-        const completionPct = students.reduce(
-          (sum, s) => sum + Math.min(100, ((s.lessons_completed || 0) / totalLessonsCount) * 100),
-          0
-        ) / students.length;
-        setAvgCompletion(Math.round(completionPct));
-        setAvgPoints(Math.round(students.reduce((sum, s) => sum + (s.total_points || 0), 0) / students.length));
+        // Total stars per student, from quiz_results.stars_earned.
+        const quizSnap = await getDocs(collection(db, 'quiz_results'));
+        const starCounts = {};
+        quizSnap.docs.forEach((d) => {
+          const { student_id, stars_earned } = d.data();
+          if (student_id) starCounts[student_id] = (starCounts[student_id] || 0) + (stars_earned || 0);
+        });
+
+        setTotalStudents(students.length);
+        setLessonsPublished(publishedLessons.length);
+
+        if (students.length > 0) {
+          const totalLessonsCount = publishedLessons.length || 1;
+          const completionPct = students.reduce(
+            (sum, s) => sum + Math.min(100, ((lessonCounts[s.id] || 0) / totalLessonsCount) * 100),
+            0
+          ) / students.length;
+          setAvgCompletion(Math.round(completionPct));
+          setAvgPoints(
+            Math.round(students.reduce((sum, s) => sum + (starCounts[s.id] || 0), 0) / students.length)
+          );
+        }
+
+        setChartData({
+          labels: Object.keys(byModule),
+          datasets: [
+            {
+              label: 'Published Lessons',
+              data: Object.values(byModule),
+              backgroundColor: '#00838A',
+              borderRadius: 8,
+            },
+          ],
+        });
+      } catch (err) {
+        console.error('Failed to load dashboard data:', err);
+      } finally {
+        setLoading(false);
       }
-
-      setChartData({
-        labels: Object.keys(byModule),
-        datasets: [
-          {
-            label: 'Published Lessons',
-            data: Object.values(byModule),
-            backgroundColor: '#00838A',
-            borderRadius: 8,
-          },
-        ],
-      });
-
-      setLoading(false);
     };
     fetchData();
   }, []);
@@ -73,7 +102,7 @@ export default function TeacherDashboard() {
     { label: 'Total Students', value: totalStudents, icon: 'bi-people-fill', color: '#00838A' },
     { label: 'Lessons Published', value: lessonsPublished, icon: 'bi-collection-fill', color: '#1565C0' },
     { label: 'Avg. Completion', value: `${avgCompletion}%`, icon: 'bi-graph-up-arrow', color: '#2E7D32' },
-    { label: 'Avg. Points / Student', value: avgPoints, icon: 'bi-star-fill', color: '#6A1B9A' },
+    { label: 'Avg. Stars / Student', value: avgPoints, icon: 'bi-star-fill', color: '#6A1B9A' },
   ];
 
   const chartOptions = {
