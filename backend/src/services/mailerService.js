@@ -1,22 +1,29 @@
+import '../loadEnv.js';
 import nodemailer from 'nodemailer';
-import dotenv from 'dotenv';
-dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  host: process.env.MAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.MAIL_PORT || '587'),
-  secure: process.env.MAIL_SECURE === 'true',
-  auth: {
-    user: process.env.MAIL_USER,
-    pass: process.env.MAIL_PASS,
-  },
-});
+// Created lazily on first send so the SMTP password (a Cloud secret) is read
+// at runtime, after Functions has injected it into the environment.
+let transporter;
+function getTransporter() {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.MAIL_PORT || '587'),
+      secure: process.env.MAIL_SECURE === 'true',
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+    });
+  }
+  return transporter;
+}
 
 // ─── Send Student Username + Password ────────────────────────────────────────
 export const sendStudentCredentials = async ({
   full_name, email, password, grade_level, section,
 }) => {
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"SignVibe Admin" <${process.env.MAIL_USER}>`,
     to: email,
     subject: '📋 Your SignVibe Student Account Credentials',
@@ -67,7 +74,7 @@ export const sendStudentCredentials = async ({
 export const sendTeacherCredentials = async ({
   full_name, email, password, employee_no, section_handled,
 }) => {
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"SignVibe Admin" <${process.env.MAIL_USER}>`,
     to: email,
     subject: '📋 Your SignVibe Teacher Account Credentials',
@@ -117,7 +124,7 @@ export const sendTeacherCredentials = async ({
 
 // ─── Send Password Reset Link ─────────────────────────────────────────────────
 export const sendPasswordResetEmail = async ({ full_name, email, reset_link }) => {
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: `"SignVibe Admin" <${process.env.MAIL_USER}>`,
     to: email,
     subject: '🔐 SignVibe – Password Reset Request',

@@ -1,14 +1,11 @@
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import teacherRoutes from './routes/teacherRoutes.js';
 import studentRoutes from './routes/studentRoutes.js';
 import resetRequestRoutes from './routes/resetRequestRoutes.js';
 
-dotenv.config();
-
 const app = express();
-const PORT = process.env.PORT || 8000;
 
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -35,6 +32,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`SignVibe API running on http://localhost:${PORT}`);
-});
+export default app;
