@@ -4,6 +4,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import { ListSkeleton } from '../../components/Skeletons';
 import { API_BASE } from '../../config/api';
 import { buildFullName } from '../../utils/name';
 
@@ -449,10 +450,10 @@ export default function StudentsList() {
   return (
     <div className="d-flex">
       <Sidebar />
-      <div style={{ marginLeft: '250px', width: '100%', minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div className="sv-shell">
         <Navbar title="Students List" />
 
-        <div className="p-4">
+        <div className="p-4 sv-page">
 
           {/* Tabs */}
           <div className="d-flex gap-2 mb-3">
@@ -503,7 +504,7 @@ export default function StudentsList() {
           <div className="card border-0 shadow-sm rounded-4">
             <div className="card-body p-0">
               {loading ? (
-                <div className="text-center py-5"><div className="spinner-border" style={{ color: '#008080' }}></div></div>
+                <div className="p-3"><ListSkeleton rows={6} /></div>
               ) : (
                 <div className="table-responsive">
                   <table className="table table-hover mb-0 align-middle">

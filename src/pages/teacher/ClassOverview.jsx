@@ -4,6 +4,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import { Bar } from 'react-chartjs-2';
+import { StatGridSkeleton, CardSkeleton } from '../../components/Skeletons';
 import {
   Chart as ChartJS, CategoryScale, LinearScale,
   BarElement, Tooltip, Legend,
@@ -79,35 +80,36 @@ export default function ClassOverview() {
   return (
     <div className="d-flex">
       <Sidebar />
-      <div style={{ marginLeft: '250px', width: '100%', minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div className="sv-shell">
         <Navbar title="Class Overview" />
 
-        <div className="p-4">
+        <div className="p-4 sv-page">
           {loading ? (
-            <div className="text-center py-5">
-              <div className="spinner-border" style={{ color: '#00838A' }}></div>
-            </div>
+            <>
+              <StatGridSkeleton count={3} />
+              <CardSkeleton height={240} />
+            </>
           ) : (
             <>
               {/* Summary stats */}
-              <div className="row g-3 mb-4">
+              <div className="row g-3 mb-4 sv-stagger">
                 {[
                   { label: 'Total Students', value: students.length, color: '#00838A', icon: 'bi-people-fill' },
                   { label: 'Class Avg. Stars', value: classAvgPoints, color: '#1565C0', icon: 'bi-star-fill' },
                   { label: 'Top Performer', value: topPerformer, color: '#F57F17', icon: 'bi-trophy-fill' },
                 ].map((s, i) => (
-                  <div key={i} className="col-md-4">
-                    <div className="card border-0 shadow-sm rounded-4">
+                  <div key={i} className="col-lg-4 col-md-6">
+                    <div className="card border-0 shadow-sm rounded-4 h-100 sv-stat" style={{ color: s.color }}>
                       <div className="card-body d-flex align-items-center gap-3">
                         <div
-                          className="rounded-3 d-flex align-items-center justify-content-center"
+                          className="rounded-3 d-flex align-items-center justify-content-center sv-stat-icon"
                           style={{ width: 52, height: 52, backgroundColor: `${s.color}18` }}
                         >
                           <i className={`bi ${s.icon} fs-4`} style={{ color: s.color }}></i>
                         </div>
-                        <div>
+                        <div className="overflow-hidden">
                           <p className="text-muted small mb-0">{s.label}</p>
-                          <h4 className="fw-bold mb-0" style={{ color: s.color }}>{s.value}</h4>
+                          <h4 className="fw-bold mb-0 sv-stat-value text-truncate" style={{ color: s.color }}>{s.value}</h4>
                         </div>
                       </div>
                     </div>
@@ -116,23 +118,33 @@ export default function ClassOverview() {
               </div>
 
               {/* Bar chart */}
-              <div className="card border-0 shadow-sm rounded-4 mb-4">
+              <div className="card border-0 shadow-sm rounded-4 mb-4 sv-fade-up" style={{ animationDelay: '240ms' }}>
                 <div className="card-body p-4">
                   <h6 className="fw-semibold mb-1">Student Performance Comparison</h6>
                   <p className="text-muted small mb-4">Stars and lessons completed per student</p>
                   {students.length > 0 ? (
-                    <Bar
-                      data={chartData}
-                      options={{
-                        responsive: true,
-                        plugins: { legend: { position: 'bottom' } },
-                        scales: {
-                          y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
-                          x: { grid: { display: false } },
-                        },
-                      }}
-                      height={60}
-                    />
+                    <div style={{ height: 'clamp(240px, 38vh, 380px)' }}>
+                      <Bar
+                        data={chartData}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          interaction: { mode: 'index', intersect: false },
+                          plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                              backgroundColor: 'rgba(6,34,37,.92)',
+                              padding: 12,
+                              cornerRadius: 10,
+                            },
+                          },
+                          scales: {
+                            y: { beginAtZero: true, grid: { color: '#f0f0f0' } },
+                            x: { grid: { display: false } },
+                          },
+                        }}
+                      />
+                    </div>
                   ) : (
                     <div className="text-center py-4 text-muted">No data yet</div>
                   )}

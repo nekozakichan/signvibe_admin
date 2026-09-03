@@ -1,0 +1,646 @@
+/* ==========================================================================
+   SignVibe — Web Admin Portal
+   Motion, responsiveness & "alive" layer
+   --------------------------------------------------------------------------
+   Loaded after Bootstrap in main.jsx. Everything here is additive: it tunes
+   the existing Bootstrap look rather than replacing it.
+
+   Sections
+     1.  Design tokens
+     2.  Base & fluid typography
+     3.  Keyframes
+     4.  Entrance / stagger utilities
+     5.  App shell (sidebar drawer, navbar, content offset)
+     6.  Cards & stat tiles
+     7.  Buttons & form controls
+     8.  Tables, badges, modals, alerts
+     9.  Ambient life (aurora, orbs, breathing)
+     10. Skeleton loaders
+     11. Responsive refinements
+     12. Reduced motion & accessibility
+   ========================================================================== */
+
+/* 1. ─────────────────────────────── Design tokens ─────────────────────── */
+:root {
+  /* Brand */
+  --sv-teal: #00838a;
+  --sv-teal-600: #006f75;
+  --sv-teal-800: #005f5f;
+  --sv-teal-tint: rgba(0, 131, 138, 0.08);
+  --sv-teal-tint-2: rgba(0, 131, 138, 0.16);
+  --sv-ink: #16232b;
+  --sv-muted: #5a6a72;
+  --sv-surface: #f5f7f7;
+
+  /* Layout */
+  --sv-sidebar-w: 250px;
+  --sv-content-offset: var(--sv-sidebar-w);
+  --sv-nav-h: 64px;
+
+  /* Motion — one vocabulary for the whole app */
+  --sv-ease: cubic-bezier(0.22, 1, 0.36, 1);        /* settle */
+  --sv-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* slight overshoot */
+  --sv-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --sv-t-fast: 140ms;
+  --sv-t-base: 260ms;
+  --sv-t-slow: 460ms;
+
+  /* Elevation */
+  --sv-shadow-1: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --sv-shadow-2: 0 8px 18px -8px rgba(0, 131, 138, 0.28), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
+  --sv-shadow-3: 0 18px 40px -14px rgba(0, 131, 138, 0.34), 0 8px 20px -10px rgba(16, 24, 40, 0.16);
+}
+
+/* 2. ────────────────────────── Base & fluid typography ────────────────── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+  background-color: var(--sv-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--sv-teal-tint-2);
+  color: var(--sv-teal-800);
+}
+
+/* Headings scale with the viewport instead of snapping between breakpoints */
+h1, .h1 { font-size: clamp(1.75rem, 1.35rem + 1.6vw, 2.5rem); }
+h2, .h2 { font-size: clamp(1.5rem, 1.22rem + 1.2vw, 2rem); }
+h3, .h3 { font-size: clamp(1.35rem, 1.14rem + 0.85vw, 1.75rem); }
+h4, .h4 { font-size: clamp(1.2rem, 1.08rem + 0.5vw, 1.5rem); }
+h5, .h5 { font-size: clamp(1.05rem, 0.99rem + 0.28vw, 1.25rem); }
+h6, .h6 { font-size: clamp(0.95rem, 0.92rem + 0.16vw, 1.05rem); }
+
+/* A calmer, on-brand scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 131, 138, 0.35) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 131, 138, 0.28);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 99px;
+  transition: background var(--sv-t-base) var(--sv-ease);
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(0, 131, 138, 0.55); background-clip: content-box; }
+
+/* 3. ──────────────────────────────── Keyframes ────────────────────────── */
+@keyframes svFadeUp {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes svFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes svFadeRight {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes svPop {
+  0%   { opacity: 0; transform: scale(0.86); }
+  60%  { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes svBreathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 131, 138, 0.32); }
+  50%      { transform: scale(1.035); box-shadow: 0 0 0 14px rgba(0, 131, 138, 0); }
+}
+@keyframes svFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(18px, -22px, 0) scale(1.06); }
+  66%      { transform: translate3d(-14px, 12px, 0) scale(0.96); }
+}
+@keyframes svAurora {
+  0%, 100% { background-position: 0% 50%, 100% 50%, 50% 0%; }
+  50%      { background-position: 100% 50%, 0% 50%, 50% 100%; }
+}
+@keyframes svShimmer {
+  from { background-position: -180% 0; }
+  to   { background-position: 180% 0; }
+}
+@keyframes svSheen {
+  from { transform: translateX(-120%) skewX(-18deg); }
+  to   { transform: translateX(220%) skewX(-18deg); }
+}
+@keyframes svWave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  70%           { transform: rotate(-14deg); }
+  80%           { transform: rotate(10deg); }
+  90%           { transform: rotate(-6deg); }
+}
+@keyframes svGrowIn {
+  from { opacity: 0; transform: scaleY(0.4); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+@keyframes svSlideDown {
+  from { opacity: 0; transform: translate3d(0, -10px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 4. ───────────────────── Entrance & stagger utilities ────────────────── */
+.sv-page {
+  animation: svFadeUp var(--sv-t-slow) var(--sv-ease) both;
+}
+
+.sv-fade-in   { animation: svFadeIn var(--sv-t-base) var(--sv-ease) both; }
+.sv-fade-up   { animation: svFadeUp var(--sv-t-slow) var(--sv-ease) both; }
+.sv-pop       { animation: svPop 420ms var(--sv-ease-spring) both; }
+.sv-slide-down{ animation: svSlideDown var(--sv-t-base) var(--sv-ease) both; }
+
+/* Children arrive one after another instead of all at once */
+.sv-stagger > * {
+  animation: svFadeUp var(--sv-t-slow) var(--sv-ease) both;
+}
+.sv-stagger > *:nth-child(1)  { animation-delay: 40ms; }
+.sv-stagger > *:nth-child(2)  { animation-delay: 100ms; }
+.sv-stagger > *:nth-child(3)  { animation-delay: 160ms; }
+.sv-stagger > *:nth-child(4)  { animation-delay: 220ms; }
+.sv-stagger > *:nth-child(5)  { animation-delay: 280ms; }
+.sv-stagger > *:nth-child(6)  { animation-delay: 340ms; }
+.sv-stagger > *:nth-child(7)  { animation-delay: 400ms; }
+.sv-stagger > *:nth-child(8)  { animation-delay: 460ms; }
+.sv-stagger > *:nth-child(9)  { animation-delay: 520ms; }
+.sv-stagger > *:nth-child(10) { animation-delay: 580ms; }
+.sv-stagger > *:nth-child(n + 11) { animation-delay: 640ms; }
+
+/* 5. ─────────────────────────────── App shell ─────────────────────────── */
+
+/* Content column sits beside the sidebar on desktop, full-bleed below it */
+.sv-shell {
+  margin-left: var(--sv-content-offset);
+  width: 100%;
+  min-height: 100vh;
+  background-color: var(--sv-surface);
+  transition: margin-left var(--sv-t-base) var(--sv-ease);
+}
+
+/* --- Sidebar ------------------------------------------------------------ */
+.sv-sidebar {
+  width: var(--sv-sidebar-w);
+  min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 1045;
+  background: linear-gradient(168deg, #00949c 0%, var(--sv-teal) 46%, #00666d 100%);
+  background-size: 100% 160%;
+  animation: svAurora 22s var(--sv-ease-in-out) infinite;
+  box-shadow: 0 0 32px -8px rgba(0, 63, 68, 0.45);
+  transition: transform var(--sv-t-base) var(--sv-ease);
+  will-change: transform;
+}
+
+/* A soft moving glow so the rail never looks like flat paint */
+.sv-sidebar::before {
+  content: '';
+  position: absolute;
+  inset: -30% -40% auto -40%;
+  height: 70%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.16), transparent 68%);
+  animation: svFloat 18s var(--sv-ease-in-out) infinite;
+  pointer-events: none;
+}
+
+.sv-sidebar > * { position: relative; z-index: 1; }
+
+.sv-brand-icon {
+  display: inline-flex;
+  animation: svWave 5.5s var(--sv-ease-in-out) infinite;
+  transform-origin: 70% 80%;
+}
+
+.sv-avatar {
+  transition: transform var(--sv-t-base) var(--sv-ease-spring),
+              background-color var(--sv-t-base) var(--sv-ease);
+}
+.sv-sidebar:hover .sv-avatar { transform: scale(1.06); background-color: rgba(255, 255, 255, 0.3) !important; }
+
+/* Nav links: sliding active indicator + hover travel */
+.sv-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1.5rem;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  isolation: isolate;
+  transition: color var(--sv-t-base) var(--sv-ease),
+              transform var(--sv-t-base) var(--sv-ease),
+              padding-left var(--sv-t-base) var(--sv-ease);
+}
+.sv-nav-link::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #fff;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--sv-t-base) var(--sv-ease);
+}
+.sv-nav-link::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 4px;
+  height: 0;
+  background: var(--sv-teal-800);
+  border-radius: 4px 0 0 4px;
+  transform: translateY(-50%);
+  transition: height var(--sv-t-base) var(--sv-ease-spring);
+}
+.sv-nav-link:hover {
+  color: #fff;
+  padding-left: 1.75rem;
+}
+.sv-nav-link:hover::before {
+  background: rgba(255, 255, 255, 0.14);
+  transform: scaleX(1);
+}
+.sv-nav-link.active {
+  color: var(--sv-teal);
+  font-weight: 600;
+}
+.sv-nav-link.active::before { background: #fff; transform: scaleX(1); }
+.sv-nav-link.active::after  { height: 62%; }
+.sv-nav-link.active:hover   { color: var(--sv-teal-800); padding-left: 1.5rem; }
+
+.sv-nav-link i {
+  transition: transform var(--sv-t-base) var(--sv-ease-spring);
+}
+.sv-nav-link:hover i    { transform: scale(1.18) rotate(-4deg); }
+.sv-nav-link.active i   { transform: scale(1.1); }
+
+/* Mobile drawer behaviour */
+.sv-drawer-toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1050;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: var(--sv-teal);
+  color: #fff;
+  box-shadow: var(--sv-shadow-2);
+  transition: transform var(--sv-t-fast) var(--sv-ease-spring),
+              background-color var(--sv-t-base) var(--sv-ease);
+}
+.sv-drawer-toggle:hover  { background: var(--sv-teal-600); transform: scale(1.06); }
+.sv-drawer-toggle:active { transform: scale(0.94); }
+
+.sv-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1040;
+  background: rgba(6, 34, 37, 0.45);
+  backdrop-filter: blur(2px);
+  animation: svFadeIn var(--sv-t-base) var(--sv-ease) both;
+  border: 0;
+  padding: 0;
+}
+
+/* --- Top bar ------------------------------------------------------------ */
+.sv-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  height: var(--sv-nav-h);
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid rgba(16, 24, 40, 0.08);
+  transition: box-shadow var(--sv-t-base) var(--sv-ease),
+              padding-left var(--sv-t-base) var(--sv-ease);
+}
+.sv-navbar.is-stuck { box-shadow: 0 6px 20px -14px rgba(16, 24, 40, 0.5); }
+.sv-navbar h5 {
+  animation: svFadeRight var(--sv-t-slow) var(--sv-ease) both;
+}
+
+/* 6. ────────────────────────── Cards & stat tiles ─────────────────────── */
+.card {
+  transition: box-shadow var(--sv-t-base) var(--sv-ease),
+              transform var(--sv-t-base) var(--sv-ease),
+              border-color var(--sv-t-base) var(--sv-ease);
+}
+.card.shadow-sm:hover { box-shadow: var(--sv-shadow-2) !important; }
+
+/* Dashboard KPI tiles get a little more personality */
+.sv-stat {
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+}
+.sv-stat::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.5;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform var(--sv-t-slow) var(--sv-ease);
+}
+.sv-stat:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--sv-shadow-3) !important;
+}
+.sv-stat:hover::after { transform: scaleX(1); }
+
+.sv-stat-icon {
+  transition: transform 420ms var(--sv-ease-spring);
+}
+.sv-stat:hover .sv-stat-icon { transform: scale(1.12) rotate(-6deg); }
+
+.sv-stat-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* 7. ───────────────────────── Buttons & form controls ─────────────────── */
+.btn {
+  transition: transform var(--sv-t-fast) var(--sv-ease-spring),
+              box-shadow var(--sv-t-base) var(--sv-ease),
+              background-color var(--sv-t-base) var(--sv-ease),
+              border-color var(--sv-t-base) var(--sv-ease),
+              color var(--sv-t-base) var(--sv-ease),
+              filter var(--sv-t-base) var(--sv-ease);
+}
+.btn:hover:not(:disabled)  { transform: translateY(-1px); filter: saturate(1.05) brightness(1.03); }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+.btn:disabled              { transform: none; }
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.22rem var(--sv-teal-tint-2);
+}
+
+/* Solid buttons get a light sweep on hover.
+   Outline / link / dropdown buttons are excluded — the last of those
+   already uses ::after for its caret. */
+.sv-cta,
+.btn:not(.btn-link):not(.dropdown-toggle):not([class*='btn-outline-']) {
+  position: relative;
+  overflow: hidden;
+}
+.sv-cta::after,
+.btn:not(.btn-link):not(.dropdown-toggle):not([class*='btn-outline-'])::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: translateX(-120%) skewX(-18deg);
+  pointer-events: none;
+}
+.sv-cta:hover:not(:disabled)::after,
+.btn:not(.btn-link):not(.dropdown-toggle):not([class*='btn-outline-']):hover:not(:disabled)::after {
+  animation: svSheen 750ms var(--sv-ease);
+}
+.sv-cta:hover:not(:disabled) { box-shadow: var(--sv-shadow-2); }
+
+/* Inputs settle into focus rather than snapping */
+.form-control,
+.form-select,
+.input-group-text {
+  transition: border-color var(--sv-t-base) var(--sv-ease),
+              box-shadow var(--sv-t-base) var(--sv-ease),
+              background-color var(--sv-t-base) var(--sv-ease);
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: rgba(0, 131, 138, 0.55);
+  box-shadow: 0 0 0 0.22rem var(--sv-teal-tint);
+}
+/* Keep the leading icon in sync with the field it belongs to */
+.input-group:focus-within .input-group-text {
+  border-color: rgba(0, 131, 138, 0.55);
+  background-color: var(--sv-teal-tint) !important;
+}
+.input-group:focus-within .input-group-text i { color: var(--sv-teal) !important; }
+
+.form-check-input { transition: background-color var(--sv-t-base) var(--sv-ease), border-color var(--sv-t-base) var(--sv-ease); }
+
+/* 8. ───────────────── Tables, badges, modals & alerts ─────────────────── */
+.table tbody tr {
+  transition: background-color var(--sv-t-fast) var(--sv-ease),
+              box-shadow var(--sv-t-fast) var(--sv-ease);
+}
+.table tbody tr:hover {
+  background-color: var(--sv-teal-tint);
+  box-shadow: inset 3px 0 0 0 var(--sv-teal);
+}
+.table tbody tr > td,
+.table tbody tr > th { transition: padding var(--sv-t-fast) var(--sv-ease); }
+
+.badge { transition: transform var(--sv-t-fast) var(--sv-ease-spring); }
+.badge:hover { transform: scale(1.06); }
+
+/* Bootstrap's own modal easing, softened */
+.modal.fade .modal-dialog {
+  transform: translate3d(0, 24px, 0) scale(0.97);
+  transition: transform 320ms var(--sv-ease), opacity 320ms var(--sv-ease);
+}
+.modal.show .modal-dialog { transform: none; }
+.modal-backdrop.fade { transition: opacity 260ms var(--sv-ease); }
+
+/* Hand-rolled overlays (this app builds a few of its own) */
+.sv-overlay { animation: svFadeIn var(--sv-t-base) var(--sv-ease) both; }
+.sv-overlay-panel { animation: svPop 340ms var(--sv-ease-spring) both; }
+
+.alert {
+  animation: svSlideDown var(--sv-t-base) var(--sv-ease) both;
+}
+
+.progress-bar {
+  transition: width 700ms var(--sv-ease);
+}
+
+.nav-tabs .nav-link,
+.nav-pills .nav-link {
+  transition: color var(--sv-t-base) var(--sv-ease),
+              background-color var(--sv-t-base) var(--sv-ease),
+              transform var(--sv-t-fast) var(--sv-ease);
+}
+.nav-tabs .nav-link:hover,
+.nav-pills .nav-link:hover { transform: translateY(-1px); }
+
+/* 9. ────────────────────────────── Ambient life ───────────────────────── */
+
+/* Slow-drifting brand wash — used behind the auth screens */
+.sv-aurora {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden; /* the drifting orbs must never widen the page */
+  background-color: #e7f0f0;
+  background-image:
+    radial-gradient(42rem 34rem at 10% 14%, rgba(0, 131, 138, 0.42), transparent 62%),
+    radial-gradient(38rem 30rem at 90% 20%, rgba(21, 101, 192, 0.28), transparent 60%),
+    radial-gradient(46rem 36rem at 50% 100%, rgba(0, 190, 176, 0.34), transparent 64%);
+  background-size: 170% 170%, 170% 170%, 170% 170%;
+  animation: svAurora 26s var(--sv-ease-in-out) infinite;
+}
+
+/* Soft light, not glass marbles — heavy blur keeps these atmospheric */
+.sv-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(34px);
+  opacity: 0.75;
+  pointer-events: none;
+  z-index: -1;
+  animation: svFloat 20s var(--sv-ease-in-out) infinite;
+}
+.sv-orb-1 { width: 260px; height: 260px; top: 4%;  left: 4%;   background: radial-gradient(circle, rgba(0,172,164,.60), transparent 68%); animation-duration: 24s; }
+.sv-orb-2 { width: 180px; height: 180px; top: 58%; left: 10%;  background: radial-gradient(circle, rgba(21,101,192,.40), transparent 68%); animation-duration: 19s; animation-delay: -6s; }
+.sv-orb-3 { width: 320px; height: 320px; top: 8%;  right: 3%;  background: radial-gradient(circle, rgba(0,131,138,.46), transparent 68%); animation-duration: 28s; animation-delay: -11s; }
+.sv-orb-4 { width: 210px; height: 210px; bottom: 4%; right: 12%; background: radial-gradient(circle, rgba(0,190,176,.44), transparent 68%); animation-duration: 22s; animation-delay: -3s; }
+
+.sv-breathe { animation: svBreathe 4.2s var(--sv-ease-in-out) infinite; }
+
+.sv-hover-tilt { transition: transform var(--sv-t-base) var(--sv-ease); }
+.sv-hover-tilt:hover { transform: translateY(-3px) rotate(-0.35deg); }
+
+/* 10. ──────────────────────────── Skeletons ───────────────────────────── */
+.sv-skel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #e9eded 25%, #f4f7f7 37%, #e9eded 63%);
+  background-size: 300% 100%;
+  animation: svShimmer 1.35s linear infinite;
+}
+.sv-skel-line { height: 12px; margin-bottom: 8px; }
+.sv-skel-line.short { width: 42%; }
+.sv-skel-line.mid   { width: 68%; }
+.sv-skel-title { height: 22px; width: 55%; margin-bottom: 12px; }
+.sv-skel-icon  { width: 52px; height: 52px; border-radius: 12px; flex: 0 0 auto; }
+.sv-skel-block { height: 220px; border-radius: 16px; }
+
+/* 11. ─────────────────────── Responsive refinements ───────────────────── */
+
+/* Laptops: give the content column a touch more room */
+@media (max-width: 1199.98px) {
+  :root { --sv-sidebar-w: 226px; }
+}
+
+/* Tablet & below: sidebar becomes an off-canvas drawer */
+@media (max-width: 991.98px) {
+  :root {
+    --sv-sidebar-w: 260px;
+    --sv-content-offset: 0px;
+  }
+
+  .sv-sidebar { transform: translate3d(-102%, 0, 0); box-shadow: none; }
+  .sv-sidebar.is-open {
+    transform: none;
+    box-shadow: 0 0 48px -6px rgba(0, 63, 68, 0.5);
+  }
+
+  .sv-drawer-toggle { display: inline-flex; }
+  /* Once the drawer is out, the button rides along to its edge so it
+     never sits on top of the SignVibe wordmark */
+  .sv-drawer-toggle.is-open {
+    left: calc(var(--sv-sidebar-w) + 12px);
+    background: #fff;
+    color: var(--sv-teal);
+  }
+  .sv-drawer-toggle.is-open:hover { background: #fff; }
+
+  .sv-navbar { padding-left: 4.25rem; }
+}
+
+@media (max-width: 767.98px) {
+  /* Tables keep their columns readable and scroll inside their own
+     wrapper rather than stretching the page sideways */
+  .table-responsive > .table { min-width: 620px; }
+
+  /* Tighten the generous desktop padding */
+  .sv-shell .p-4 { padding: 1rem !important; }
+  .sv-navbar { padding-right: 1rem; }
+
+  /* Stat tiles read better stacked at full width */
+  .sv-stat .card-body { gap: 0.75rem !important; }
+}
+
+@media (max-width: 575.98px) {
+  :root { --sv-nav-h: 58px; }
+
+  .sv-shell .card-body { padding: 1rem; }
+  .modal-dialog { margin: 0.5rem; }
+
+  /* Button rows wrap instead of overflowing */
+  .sv-shell .d-flex.gap-3 { gap: 0.65rem !important; }
+  .btn { white-space: normal; }
+}
+
+/* Wide screens: stop the content from stretching into a thin ribbon */
+@media (min-width: 1600px) {
+  .sv-shell > .p-4 {
+    max-width: 1520px;
+    margin-inline: auto;
+    width: 100%;
+  }
+}
+
+/* Touch devices: hover lifts feel wrong under a finger */
+@media (hover: none) {
+  .card.shadow-sm:hover,
+  .sv-stat:hover,
+  .btn:hover:not(:disabled),
+  .sv-hover-tilt:hover { transform: none; }
+  .table tbody tr:hover { box-shadow: none; }
+}
+
+/* 12. ───────────────── Reduced motion & accessibility ─────────────────── */
+:focus-visible {
+  outline: 2px solid var(--sv-teal);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .sv-sidebar,
+  .sv-aurora { animation: none; }
+  .sv-orb { display: none; }
+
+  /* Motion is off, but the drawer still has to open */
+  .sv-sidebar.is-open { transform: none; }
+}

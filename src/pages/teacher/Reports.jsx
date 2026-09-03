@@ -3,6 +3,7 @@ import { db } from '../../api/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import { ListSkeleton } from '../../components/Skeletons';
 
 export default function Reports() {
   const [students, setStudents] = useState([]);
@@ -84,10 +85,10 @@ export default function Reports() {
   return (
     <div className="d-flex">
       <Sidebar />
-      <div style={{ marginLeft: '250px', width: '100%', minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div className="sv-shell">
         <Navbar title="Reports" />
 
-        <div className="p-4">
+        <div className="p-4 sv-page">
           <div className="d-flex justify-content-between align-items-center mb-4">
             <div>
               <h6 className="fw-semibold mb-0">Student Performance Report</h6>
@@ -166,9 +167,7 @@ export default function Reports() {
           <div className="card border-0 shadow-sm rounded-4">
             <div className="card-body p-0">
               {loading ? (
-                <div className="text-center py-5">
-                  <div className="spinner-border" style={{ color: '#00838A' }}></div>
-                </div>
+                <div className="p-3"><ListSkeleton rows={6} /></div>
               ) : (
                 <div className="table-responsive">
                   <table className="table mb-0 align-middle">

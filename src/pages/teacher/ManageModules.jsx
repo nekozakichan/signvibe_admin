@@ -692,17 +692,10 @@ export default function ManageModules() {
   return (
     <div className="d-flex">
       <Sidebar />
-      <div
-        style={{
-          marginLeft: '250px',
-          width: '100%',
-          minHeight: '100vh',
-          backgroundColor: '#f5f5f5',
-        }}
-      >
+      <div className="sv-shell">
         <Navbar title="Manage Modules" />
 
-        <div className="p-4">
+        <div className="p-4 sv-page">
           <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
             <div className="d-flex gap-2 flex-wrap">
               {[{ id: 'all', name: 'All', icon_url: null }, ...activeModules].map((m) => (

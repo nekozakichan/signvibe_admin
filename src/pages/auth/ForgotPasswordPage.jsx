@@ -66,21 +66,22 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div
-      className="min-vh-100 d-flex align-items-center justify-content-center"
-      style={{ backgroundColor: '#f0f4f4' }}
-    >
+    <div className="min-vh-100 d-flex align-items-center justify-content-center sv-aurora py-5">
+      <span className="sv-orb sv-orb-1" aria-hidden="true"></span>
+      <span className="sv-orb sv-orb-3" aria-hidden="true"></span>
+      <span className="sv-orb sv-orb-4" aria-hidden="true"></span>
+
       <div className="container">
         <div className="row justify-content-center">
-          <div className="col-md-5 col-lg-4">
+          <div className="col-11 col-sm-9 col-md-6 col-lg-4 sv-stagger">
 
             {/* Logo */}
             <div className="text-center mb-4">
               <div
-                className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
+                className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3 sv-breathe"
                 style={{ width: 72, height: 72, backgroundColor: '#00838A' }}
               >
-                <i className="bi bi-hand-index-thumb-fill text-white fs-2"></i>
+                <i className="bi bi-hand-index-thumb-fill text-white fs-2 sv-brand-icon"></i>
               </div>
               <h3 className="fw-bold mb-1" style={{ color: '#00838A', fontFamily: 'Georgia, serif' }}>
                 SignVibe

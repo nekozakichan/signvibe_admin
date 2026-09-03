@@ -34,21 +34,24 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      className="min-vh-100 d-flex align-items-center justify-content-center"
-      style={{ backgroundColor: '#f0f4f4' }}
-    >
+    <div className="min-vh-100 d-flex align-items-center justify-content-center sv-aurora py-5">
+      {/* Slow-drifting shapes so the screen breathes instead of sitting still */}
+      <span className="sv-orb sv-orb-1" aria-hidden="true"></span>
+      <span className="sv-orb sv-orb-2" aria-hidden="true"></span>
+      <span className="sv-orb sv-orb-3" aria-hidden="true"></span>
+      <span className="sv-orb sv-orb-4" aria-hidden="true"></span>
+
       <div className="container">
         <div className="row justify-content-center">
-          <div className="col-md-5 col-lg-4">
+          <div className="col-11 col-sm-9 col-md-6 col-lg-4 sv-stagger">
 
             {/* Logo */}
             <div className="text-center mb-4">
               <div
-                className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
+                className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3 sv-breathe"
                 style={{ width: 72, height: 72, backgroundColor: '#00838A' }}
               >
-                <i className="bi bi-hand-index-thumb-fill text-white fs-2"></i>
+                <i className="bi bi-hand-index-thumb-fill text-white fs-2 sv-brand-icon"></i>
               </div>
               <h3
                 className="fw-bold mb-1"
@@ -60,8 +63,15 @@ export default function LoginPage() {
             </div>
 
             {/* Card */}
-            <div className="card border-0 shadow-sm rounded-4">
-              <div className="card-body p-4">
+            <div
+              className="card border-0 rounded-4 sv-hover-tilt"
+              style={{
+                boxShadow: '0 18px 44px -18px rgba(0,131,138,.38), 0 6px 18px -10px rgba(16,24,40,.18)',
+                backgroundColor: 'rgba(255,255,255,.92)',
+                backdropFilter: 'blur(10px)',
+              }}
+            >
+              <div className="card-body p-4 p-sm-4">
                 <h5 className="fw-semibold mb-1">Welcome back</h5>
                 <p className="text-muted small mb-4">
                   Sign in to your account
@@ -136,7 +146,7 @@ export default function LoginPage() {
 
                   <button
                     type="submit"
-                    className="btn w-100 fw-semibold text-white py-2 rounded-3"
+                    className="btn w-100 fw-semibold text-white py-2 rounded-3 sv-cta"
                     style={{ backgroundColor: '#00838A' }}
                     disabled={loading}
                   >

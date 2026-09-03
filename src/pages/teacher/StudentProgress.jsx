@@ -227,7 +227,7 @@ export default function StudentProgress() {
     return (
       <div className="d-flex">
         <Sidebar />
-        <div style={{ marginLeft: '250px', width: '100%' }} className="d-flex align-items-center justify-content-center min-vh-100">
+        <div style={{ marginLeft: 'var(--sv-content-offset)', width: '100%' }} className="d-flex align-items-center justify-content-center min-vh-100">
           <div className="spinner-border" style={{ color: '#00838A' }}></div>
         </div>
       </div>
@@ -237,10 +237,10 @@ export default function StudentProgress() {
   return (
     <div className="d-flex">
       <Sidebar />
-      <div style={{ marginLeft: '250px', width: '100%', minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div className="sv-shell">
         <Navbar title="Student Progress" />
 
-        <div className="p-4">
+        <div className="p-4 sv-page">
           {/* Back button + student name */}
           <div className="d-flex align-items-center gap-3 mb-4">
             <button

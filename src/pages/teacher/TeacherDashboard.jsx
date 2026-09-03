@@ -4,6 +4,8 @@ import { db } from '../../api/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import AnimatedNumber from '../../components/AnimatedNumber';
+import { StatGridSkeleton, CardSkeleton } from '../../components/Skeletons';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale,
@@ -101,15 +103,32 @@ export default function TeacherDashboard() {
   const stats = [
     { label: 'Total Students', value: totalStudents, icon: 'bi-people-fill', color: '#00838A' },
     { label: 'Lessons Published', value: lessonsPublished, icon: 'bi-collection-fill', color: '#1565C0' },
-    { label: 'Avg. Completion', value: `${avgCompletion}%`, icon: 'bi-graph-up-arrow', color: '#2E7D32' },
+    { label: 'Avg. Completion', value: avgCompletion, suffix: '%', icon: 'bi-graph-up-arrow', color: '#2E7D32' },
     { label: 'Avg. Stars / Student', value: avgPoints, icon: 'bi-star-fill', color: '#6A1B9A' },
   ];
 
   const chartOptions = {
     responsive: true,
+    // Let the chart fill its container so it reflows on any screen size.
+    maintainAspectRatio: false,
+    animation: { duration: 900, easing: 'easeOutQuart' },
+    animations: {
+      y: { from: 0 },
+    },
+    transitions: {
+      active: { animation: { duration: 200 } },
+    },
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: { display: false },
       title: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(6,34,37,.92)',
+        padding: 12,
+        cornerRadius: 10,
+        displayColors: false,
+        titleFont: { weight: '600' },
+      },
     },
     scales: {
       y: {
@@ -124,34 +143,40 @@ export default function TeacherDashboard() {
   return (
     <div className="d-flex">
       <Sidebar />
-      <div style={{ marginLeft: '250px', width: '100%', minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+      <div className="sv-shell">
         <Navbar title="Teacher Dashboard" />
 
-        <div className="p-4">
+        <div className="p-4 sv-page">
           <p className="mb-4" style={{ color: '#555' }}>
             Welcome back, <strong>{currentUser?.full_name}</strong>. Here's your class overview.
           </p>
 
           {loading ? (
-            <div className="text-center py-5"><div className="spinner-border" style={{ color: '#00838A' }}></div></div>
+            <>
+              <StatGridSkeleton count={4} />
+              <CardSkeleton height={240} />
+            </>
           ) : (
             <>
               {/* Stats */}
-              <div className="row g-3 mb-4">
+              <div className="row g-3 mb-4 sv-stagger">
                 {stats.map((stat, i) => (
-                  <div key={i} className="col-md-3 col-sm-6">
-                    <div className="card border-0 shadow-sm rounded-4 h-100">
+                  <div key={i} className="col-xl-3 col-md-6">
+                    <div
+                      className="card border-0 shadow-sm rounded-4 h-100 sv-stat"
+                      style={{ color: stat.color }}
+                    >
                       <div className="card-body d-flex align-items-center gap-3">
                         <div
-                          className="rounded-3 d-flex align-items-center justify-content-center"
+                          className="rounded-3 d-flex align-items-center justify-content-center sv-stat-icon"
                           style={{ width: 52, height: 52, backgroundColor: `${stat.color}18` }}
                         >
                           <i className={`bi ${stat.icon} fs-4`} style={{ color: stat.color }}></i>
                         </div>
-                        <div>
+                        <div className="overflow-hidden">
                           <p className="small mb-0" style={{ color: '#555' }}>{stat.label}</p>
-                          <h3 className="fw-bold mb-0" style={{ color: stat.color }}>
-                            {stat.value}
+                          <h3 className="fw-bold mb-0 sv-stat-value" style={{ color: stat.color }}>
+                            <AnimatedNumber value={stat.value} suffix={stat.suffix || ''} />
                           </h3>
                         </div>
                       </div>
@@ -161,14 +186,16 @@ export default function TeacherDashboard() {
               </div>
 
               {/* Chart */}
-              <div className="card border-0 shadow-sm rounded-4">
+              <div className="card border-0 shadow-sm rounded-4 sv-fade-up" style={{ animationDelay: '260ms' }}>
                 <div className="card-body p-4">
                   <h6 className="fw-semibold mb-1">Published Lessons per Module</h6>
                   <p className="small mb-4" style={{ color: '#555' }}>
                     How many lessons you've published in each module
                   </p>
                   {chartData.labels.length > 0 ? (
-                    <Bar data={chartData} options={chartOptions} height={80} />
+                    <div style={{ height: 'clamp(220px, 34vh, 340px)' }}>
+                      <Bar data={chartData} options={chartOptions} />
+                    </div>
                   ) : (
                     <div className="text-center py-4" style={{ color: '#555' }}>
                       No lessons published yet. Head to Manage Modules to add your first one.
