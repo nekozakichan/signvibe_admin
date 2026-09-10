@@ -3,6 +3,7 @@ import { db } from '../../api/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import Logo from '../../components/Logo';
 import { ListSkeleton } from '../../components/Skeletons';
 
 export default function Reports() {
@@ -122,12 +123,7 @@ export default function Reports() {
             style={{ borderLeft: '4px solid #00838A' }}
           >
             <div className="d-flex align-items-center gap-3">
-              <div
-                className="rounded-circle d-flex align-items-center justify-content-center"
-                style={{ width: 52, height: 52, backgroundColor: '#00838A' }}
-              >
-                <i className="bi bi-hand-index-thumb-fill text-white fs-4"></i>
-              </div>
+              <Logo size={56} />
               <div>
                 <h5 className="fw-bold mb-0" style={{ color: '#00838A' }}>
                   SignVibe — Student Progress Report

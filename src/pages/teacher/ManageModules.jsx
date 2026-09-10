@@ -875,7 +875,7 @@ export default function ManageModules() {
                     <textarea
                       className="form-control rounded-3"
                       rows={3}
-                      placeholder="Brief description of the sign..."
+                      placeholder="How to do the sign..."
                       value={form.description}
                       onChange={(e) =>
                         setForm({ ...form, description: e.target.value })

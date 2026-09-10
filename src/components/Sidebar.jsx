@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Logo from './Logo';
 
 export default function Sidebar() {
   const { userRole, logout, currentUser } = useAuth();
@@ -85,7 +86,7 @@ export default function Sidebar() {
         {/* Logo */}
         <div className="p-4 border-bottom border-white border-opacity-25">
           <div className="d-flex align-items-center gap-2">
-            <i className="bi bi-hand-index-thumb-fill text-white fs-4 sv-brand-icon"></i>
+            <Logo size={34} ring />
             <span
               className="text-white fw-bold fs-5"
               style={{ fontFamily: 'Georgia, serif' }}
@@ -104,16 +105,7 @@ export default function Sidebar() {
         {/* User info */}
         <div className="px-4 py-3 border-bottom border-white border-opacity-25">
           <div className="d-flex align-items-center gap-2">
-            <div
-              className="rounded-circle d-flex align-items-center justify-content-center sv-avatar"
-              style={{
-                width: 36,
-                height: 36,
-                backgroundColor: 'rgba(255,255,255,0.2)',
-              }}
-            >
-              <i className="bi bi-person-fill text-white"></i>
-            </div>
+            <Logo size={36} ring />
             <div className="text-truncate">
               <p
                 className="text-white mb-0 fw-semibold text-truncate"

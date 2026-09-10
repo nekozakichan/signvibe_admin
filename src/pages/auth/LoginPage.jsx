@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../api/firebase';
+import Logo from '../../components/Logo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -49,9 +50,9 @@ export default function LoginPage() {
             <div className="text-center mb-4">
               <div
                 className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3 sv-breathe"
-                style={{ width: 72, height: 72, backgroundColor: '#00838A' }}
+                style={{ width: 96, height: 96, backgroundColor: '#ffffff' }}
               >
-                <i className="bi bi-hand-index-thumb-fill text-white fs-2 sv-brand-icon"></i>
+                <Logo size={80} alt="Urdaneta City SPED Center" />
               </div>
               <h3
                 className="fw-bold mb-1"

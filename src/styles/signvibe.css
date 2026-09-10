@@ -224,11 +224,34 @@ h6, .h6 { font-size: clamp(0.95rem, 0.92rem + 0.16vw, 1.05rem); }
   transform-origin: 70% 80%;
 }
 
-.sv-avatar {
-  transition: transform var(--sv-t-base) var(--sv-ease-spring),
-              background-color var(--sv-t-base) var(--sv-ease);
+/* --- SPED Center seal --------------------------------------------------- */
+.sv-logo {
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  border-radius: 50%; /* the seal is already round — this keeps edges clean */
+  user-select: none;
+  -webkit-user-drag: none;
 }
-.sv-sidebar:hover .sv-avatar { transform: scale(1.06); background-color: rgba(255, 255, 255, 0.3) !important; }
+
+/* Separates the full-colour seal from the teal rail behind it */
+.sv-logo-ring {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55), 0 2px 8px rgba(0, 40, 43, 0.28);
+  transition: box-shadow var(--sv-t-base) var(--sv-ease),
+              transform var(--sv-t-base) var(--sv-ease-spring);
+}
+.sv-sidebar:hover .sv-logo-ring {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.8), 0 3px 12px rgba(0, 40, 43, 0.34);
+  transform: scale(1.04);
+}
+
+/* A seal shouldn't wave like a hand — it settles into a slow pulse instead */
+.sv-logo-idle { animation: svLogoIdle 6s var(--sv-ease-in-out) infinite; }
+
+@keyframes svLogoIdle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50%      { transform: scale(1.045) rotate(1.2deg); }
+}
 
 /* Nav links: sliding active indicator + hover travel */
 .sv-nav-link {
