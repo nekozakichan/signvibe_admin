@@ -228,7 +228,7 @@ export default function Reports() {
                   SignVibe — Student Progress Report
                 </h5>
                 <p className="text-muted small mb-0">
-                  Urdaneta City SPED Center · Academic Year 2024–2025
+                  Urdaneta City SPED Center · Academic Year 2025–2026
                 </p>
               </div>
             </div>
