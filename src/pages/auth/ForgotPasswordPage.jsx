@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../api/firebase';
+import { API_BASE } from '../../config/api';
 import Logo from '../../components/Logo';
 
 export default function ForgotPasswordPage() {
@@ -17,45 +16,20 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      // Check if this email belongs to a teacher
-      const usersQ = query(
-        collection(db, 'users'),
-        where('email', '==', email.trim().toLowerCase()),
-        where('role', '==', 'teacher')
-      );
-      const userSnap = await getDocs(usersQ);
-
-      if (userSnap.empty) {
-        setError('No teacher account found with this email address.');
-        setLoading(false);
-        return;
-      }
-
-      const teacherDoc = userSnap.docs[0];
-      const { full_name } = teacherDoc.data();
-
-      // Check if a pending request already exists for this email
-      const existingQ = query(
-        collection(db, 'password_reset_requests'),
-        where('email', '==', email.trim().toLowerCase()),
-        where('status', '==', 'pending')
-      );
-      const existingSnap = await getDocs(existingQ);
-
-      if (!existingSnap.empty) {
-        setError('You already have a pending reset request. Please wait for the admin to process it.');
-        setLoading(false);
-        return;
-      }
-
-      // Save the reset request to Firestore
-      await addDoc(collection(db, 'password_reset_requests'), {
-        teacher_uid: teacherDoc.id,
-        full_name,
-        email: email.trim().toLowerCase(),
-        status: 'pending', // pending | sent
-        requested_at: serverTimestamp(),
+      // Nobody is signed in on this page, so the lookup and the write happen on
+      // the backend — the browser has no read access to the users collection.
+      const res = await fetch(`${API_BASE}/api/reset-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        setError(data.message || 'Something went wrong. Please try again.');
+        return;
+      }
 
       setSubmitted(true);
     } catch (err) {

@@ -18,7 +18,7 @@ function generatePassword() {
 function CreateTeacherModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
-    email: '', employee_no: '', section_handled: '',
+    email: '', employee_no: '',
   });
   const [generatedPassword] = useState(generatePassword());
   const [loading, setLoading] = useState(false);
@@ -29,9 +29,9 @@ function CreateTeacherModal({ onClose, onSuccess }) {
   const copyPassword = () => { navigator.clipboard.writeText(generatedPassword); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
   const handleSubmit = async () => {
-    const { first_name, last_name, email, employee_no, section_handled } = form;
-    if (!first_name.trim() || !last_name.trim() || !email.trim() || !employee_no.trim() || !section_handled.trim()) {
-      setError('First name, last name, email, employee no., and section are required.');
+    const { first_name, last_name, email, employee_no } = form;
+    if (!first_name.trim() || !last_name.trim() || !email.trim() || !employee_no.trim()) {
+      setError('First name, last name, email, and employee no. are required.');
       return;
     }
     setLoading(true); setError('');
@@ -75,15 +75,9 @@ function CreateTeacherModal({ onClose, onSuccess }) {
           <label className="form-label fw-medium small">Email Address <span style={{ color: '#777', fontSize: 11 }}>(will be used as username)</span></label>
           <input name="email" type="email" className="form-control rounded-3" placeholder="teacher@gmail.com" value={form.email} onChange={handleChange} />
         </div>
-        <div className="row g-3 mb-3">
-          <div className="col-6">
-            <label className="form-label fw-medium small">Employee No.</label>
-            <input name="employee_no" type="text" className="form-control rounded-3" placeholder="e.g. EMP-001" value={form.employee_no} onChange={handleChange} />
-          </div>
-          <div className="col-6">
-            <label className="form-label fw-medium small">Section Handled</label>
-            <input name="section_handled" type="text" className="form-control rounded-3" placeholder="e.g. Grade 3 - Sampaguita" value={form.section_handled} onChange={handleChange} />
-          </div>
+        <div className="mb-3">
+          <label className="form-label fw-medium small">Employee No.</label>
+          <input name="employee_no" type="text" className="form-control rounded-3" placeholder="e.g. EMP-001" value={form.employee_no} onChange={handleChange} />
         </div>
         <div className="mb-4">
           <label className="form-label fw-medium small">Auto-Generated Password</label>
@@ -354,8 +348,7 @@ export default function ManageTeachers() {
   const filtered = source.filter((t) =>
     displayName(t).toLowerCase().includes(search.toLowerCase()) ||
     t.email?.toLowerCase().includes(search.toLowerCase()) ||
-    t.employee_no?.toLowerCase().includes(search.toLowerCase()) ||
-    t.section_handled?.toLowerCase().includes(search.toLowerCase())
+    t.employee_no?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleCreated = (teacherData) => { setShowModal(false); setCreatedTeacher(teacherData); fetchTeachers(); };
@@ -544,7 +537,6 @@ export default function ManageTeachers() {
                         <th>Name</th>
                         <th>Email / Username</th>
                         <th>Employee No.</th>
-                        <th>Section</th>
                         <th>Status</th>
                         <th className="pe-4 text-end">Actions</th>
                       </tr>
@@ -552,7 +544,7 @@ export default function ManageTeachers() {
                     <tbody>
                       {filtered.length === 0 ? (
                         <tr>
-                          <td colSpan="7" className="text-center py-5" style={{ color: '#555' }}>
+                          <td colSpan="6" className="text-center py-5" style={{ color: '#555' }}>
                             <i className="bi bi-people fs-1 d-block mb-2 opacity-25"></i>
                             {view === 'active' ? 'No teacher accounts found' : 'No archived teachers'}
                           </td>
@@ -575,7 +567,6 @@ export default function ManageTeachers() {
                                 ? <span className="badge rounded-pill" style={{ backgroundColor: '#00838A18', color: '#00838A', fontWeight: 500, fontSize: 12 }}>{t.employee_no}</span>
                                 : <span style={{ color: '#777' }}>—</span>}
                             </td>
-                            <td className="small" style={{ color: '#444' }}>{t.section_handled || '—'}</td>
                             <td>
                               {t.status === 'archived' ? (
                                 <span className="badge rounded-pill" style={{ backgroundColor: '#fff3e0', color: '#92400e', fontSize: 12 }}>

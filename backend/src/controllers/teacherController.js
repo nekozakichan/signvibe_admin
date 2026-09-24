@@ -6,6 +6,33 @@ import {
   restoreUserRecord,
 } from '../services/firebaseService.js';
 import { sendTeacherCredentials } from '../services/mailerService.js';
+import { encryptPassword, decryptPassword } from '../services/credentialVault.js';
+
+/**
+ * Where a generated password lives now: encrypted, in user_credentials/{uid},
+ * a collection no client can read (see firestore.rules). Accounts created
+ * before the vault existed still have plaintext on the users doc, so fall back
+ * to that until scripts/migrate-credentials.js has been run.
+ */
+async function readStoredCredential(db, uid, legacyDoc) {
+  const vaultDoc = await db.collection('user_credentials').doc(uid).get();
+  if (vaultDoc.exists) {
+    const data = vaultDoc.data() || {};
+    if (data.password_enc) {
+      return { password: decryptPassword(data.password_enc), resetAt: null };
+    }
+    // Cleared because a reset link was sent — the user set their own password.
+    if (data.password_reset_at) {
+      return { password: null, resetAt: data.password_reset_at };
+    }
+  }
+  return { password: legacyDoc?.account_password || null, resetAt: null };
+}
+
+const RESET_NOTICE =
+  'This account set its own password through a reset link, so the original is no longer ' +
+  'valid. Send a new password reset link instead.';
+
 
 function generatePassword() {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
@@ -20,12 +47,12 @@ function buildFullName(first_name, middle_name, last_name) {
 
 // ─── POST /api/teachers ───────────────────────────────────────────────────────
 export const createTeacher = async (req, res) => {
-  const { first_name, middle_name, last_name, email, employee_no, section_handled } = req.body;
+  const { first_name, middle_name, last_name, email, employee_no } = req.body;
 
-  if (!first_name || !last_name || !email || !employee_no || !section_handled) {
+  if (!first_name || !last_name || !email || !employee_no) {
     return res.status(400).json({
       success: false,
-      message: 'first_name, last_name, email, employee_no, and section_handled are required.',
+      message: 'first_name, last_name, email, and employee_no are required.',
     });
   }
 
@@ -44,9 +71,13 @@ export const createTeacher = async (req, res) => {
       role: 'teacher',
       status: 'active',
       employee_no,
-      section_handled,
-      account_password: password, // stored so admin can resend anytime
       created_at: new Date().toISOString(),
+    });
+
+    // Encrypted, in a collection no client can read — never on the users doc.
+    await setFirestoreDocument('user_credentials', uid, {
+      password_enc: encryptPassword(password),
+      updated_at: new Date().toISOString(),
     });
 
     return res.status(201).json({
@@ -127,14 +158,15 @@ export const sendTeacherCredentialsEmail = async (req, res) => {
     if (!doc.exists) {
       return res.status(404).json({ success: false, message: 'Teacher not found.' });
     }
-    const { email, full_name, employee_no, section_handled, account_password } = doc.data();
-    if (!account_password) {
+    const { email, full_name, employee_no } = doc.data();
+    const { password, resetAt } = await readStoredCredential(db, uid, doc.data());
+    if (!password) {
       return res.status(400).json({
         success: false,
-        message: 'No stored password found for this account.',
+        message: resetAt ? RESET_NOTICE : 'No stored password found for this account.',
       });
     }
-    await sendTeacherCredentials({ full_name, email, password: account_password, employee_no, section_handled });
+    await sendTeacherCredentials({ full_name, email, password, employee_no });
     return res.json({ success: true, message: `Credentials sent to ${email}.` });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

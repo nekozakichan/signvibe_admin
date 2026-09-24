@@ -83,27 +83,8 @@ export default function Sidebar() {
         id="sv-sidebar"
         className={`sv-sidebar d-flex flex-column ${open ? 'is-open' : ''}`}
       >
-        {/* Logo */}
-        <div className="p-4 border-bottom border-white border-opacity-25">
-          <div className="d-flex align-items-center gap-2">
-            <Logo size={34} ring />
-            <span
-              className="text-white fw-bold fs-5"
-              style={{ fontFamily: 'Georgia, serif' }}
-            >
-              SignVibe
-            </span>
-          </div>
-          <small
-            className="text-white text-opacity-75"
-            style={{ fontSize: '11px' }}
-          >
-            {userRole === 'admin' ? 'Admin Panel' : 'Teacher Portal'}
-          </small>
-        </div>
-
-        {/* User info */}
-        <div className="px-4 py-3 border-bottom border-white border-opacity-25">
+        {/* User info — first block in the rail */}
+        <div className="px-4 pt-4 pb-3 border-bottom border-white border-opacity-25">
           <div className="d-flex align-items-center gap-2">
             <Logo size={36} ring />
             <div className="text-truncate">

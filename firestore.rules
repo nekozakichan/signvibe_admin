@@ -2,7 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid} {
-      allow read: if request.auth != null;
+      // A user may read their own document; staff may read anyone's, because the
+      // web admin lists students and teachers. A student can no longer read
+      // another account's document — that used to expose every user's record,
+      // including staff, to anyone holding a student login.
+      allow read: if request.auth != null
+        && (request.auth.uid == uid
+            || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin']);
       // Admins can update any user doc (unchanged).
       allow update: if request.auth != null
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
@@ -22,7 +28,10 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
     }
     match /password_reset_requests/{reqId} {
-      allow create: if true;
+      // Requests are created by the backend (POST /api/reset-requests), which
+      // verifies the email belongs to a teacher first. Letting the browser write
+      // here directly meant anyone on the internet could fill the admin's queue.
+      allow create: if false;
       allow read, update: if request.auth != null
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
@@ -69,6 +78,16 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow create, update, delete: if request.auth != null
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    // App-wide settings — currently settings/quiz_limits, the single source of
+    // truth for how many quiz items each grade sits. Students must be able to
+    // READ it (the app sizes their quiz from it); only staff may change it.
+    match /settings/{settingId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin'];
+      allow delete: if false;
     }
   }
 }

@@ -163,7 +163,7 @@ export default function ClassOverview() {
                         <tr>
                           <th className="ps-4 py-3">Rank</th>
                           <th>Student</th>
-                          <th>Grade & Section</th>
+                          <th>Grade Level</th>
                           <th>Lessons Done</th>
                           <th className="pe-4">Total Stars</th>
                         </tr>
@@ -177,7 +177,7 @@ export default function ClassOverview() {
                                 {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
                               </td>
                               <td className="fw-medium">{s.full_name}</td>
-                              <td className="text-muted small">{s.grade_level} - {s.section}</td>
+                              <td className="text-muted small">Grade {s.grade_level}</td>
                               <td>
                                 <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3">
                                   {lessonsCompletedMap[s.id] || 0}

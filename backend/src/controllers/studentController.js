@@ -6,6 +6,33 @@ import {
   restoreUserRecord,
 } from '../services/firebaseService.js';
 import { sendStudentCredentials } from '../services/mailerService.js';
+import { encryptPassword, decryptPassword } from '../services/credentialVault.js';
+
+/**
+ * Where a generated password lives now: encrypted, in user_credentials/{uid},
+ * a collection no client can read (see firestore.rules). Accounts created
+ * before the vault existed still have plaintext on the users doc, so fall back
+ * to that until scripts/migrate-credentials.js has been run.
+ */
+async function readStoredCredential(db, uid, legacyDoc) {
+  const vaultDoc = await db.collection('user_credentials').doc(uid).get();
+  if (vaultDoc.exists) {
+    const data = vaultDoc.data() || {};
+    if (data.password_enc) {
+      return { password: decryptPassword(data.password_enc), resetAt: null };
+    }
+    // Cleared because a reset link was sent — the user set their own password.
+    if (data.password_reset_at) {
+      return { password: null, resetAt: data.password_reset_at };
+    }
+  }
+  return { password: legacyDoc?.account_password || null, resetAt: null };
+}
+
+const RESET_NOTICE =
+  'This account set its own password through a reset link, so the original is no longer ' +
+  'valid. Send a new password reset link instead.';
+
 
 function generatePassword() {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
@@ -20,12 +47,12 @@ function buildFullName(first_name, middle_name, last_name) {
 
 // ─── POST /api/students — Create account only, do NOT auto-email ──────────────
 export const createStudent = async (req, res) => {
-  const { first_name, middle_name, last_name, email, grade_level, section } = req.body;
+  const { first_name, middle_name, last_name, email, grade_level } = req.body;
 
-  if (!first_name || !last_name || !email || !grade_level || !section) {
+  if (!first_name || !last_name || !email || !grade_level) {
     return res.status(400).json({
       success: false,
-      message: 'first_name, last_name, email, grade_level, and section are required.',
+      message: 'first_name, last_name, email, and grade_level are required.',
     });
   }
 
@@ -40,7 +67,6 @@ export const createStudent = async (req, res) => {
   try {
     const uid = await createAuthUser(email, password, full_name);
 
-    // Save the password in Firestore so admin can send it via "Send Credentials" anytime
     await setFirestoreDocument('users', uid, {
       first_name,
       middle_name: middle_name || '',
@@ -50,11 +76,16 @@ export const createStudent = async (req, res) => {
       role: 'student',
       status: 'active',
       grade_level: String(grade_level),
-      section,
       lessons_completed: 0,
       total_points: 0,
-      account_password: password, // stored so admin can email it anytime
       created_at: new Date().toISOString(),
+    });
+
+    // The password itself never touches the users document — it goes to the
+    // vault, encrypted, so "Send Credentials" can still reach it later.
+    await setFirestoreDocument('user_credentials', uid, {
+      password_enc: encryptPassword(password),
+      updated_at: new Date().toISOString(),
     });
 
     return res.status(201).json({
@@ -137,21 +168,21 @@ export const sendStudentCredentialsEmail = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Student not found.' });
     }
 
-    const { email, full_name, grade_level, section, account_password } = doc.data();
+    const { email, full_name, grade_level } = doc.data();
+    const { password, resetAt } = await readStoredCredential(db, uid, doc.data());
 
-    if (!account_password) {
+    if (!password) {
       return res.status(400).json({
         success: false,
-        message: 'No password stored for this student.',
+        message: resetAt ? RESET_NOTICE : 'No password stored for this student.',
       });
     }
 
     await sendStudentCredentials({
       full_name,
       email,
-      password: account_password,
+      password,
       grade_level,
-      section,
     });
 
     return res.json({

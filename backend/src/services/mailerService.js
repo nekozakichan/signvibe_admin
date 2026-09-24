@@ -21,7 +21,7 @@ function getTransporter() {
 
 // ─── Send Student Username + Password ────────────────────────────────────────
 export const sendStudentCredentials = async ({
-  full_name, email, password, grade_level, section,
+  full_name, email, password, grade_level,
 }) => {
   await getTransporter().sendMail({
     from: `"SignVibe Admin" <${process.env.MAIL_USER}>`,
@@ -37,13 +37,13 @@ export const sendStudentCredentials = async ({
         </div>
         <p style="color:#333;font-size:15px;">Hi <strong>${full_name}</strong>,</p>
         <p style="color:#555;font-size:14px;">
-          Your account for <strong>Grade ${grade_level} – ${section}</strong> has been created by your admin.
+          Your account for <strong>Grade ${grade_level}</strong> has been created by your admin.
           Use the credentials below to log in to SignVibe:
         </p>
         <div style="background:#f0fafa;border:1px solid #b2dfdb;border-left:5px solid #008080;padding:20px;border-radius:10px;margin:24px 0;">
           <table style="width:100%;border-collapse:collapse;">
             <tr>
-              <td style="padding:8px 0;color:#555;font-size:13px;width:100px;"><strong>Username</strong></td>
+              <td style="padding:8px 0;color:#555;font-size:13px;width:100px;"><strong>Email Address</strong></td>
               <td style="padding:8px 0;">
                 <code style="background:#e0f4f4;color:#00695c;padding:4px 10px;border-radius:5px;font-size:14px;">${email}</code>
               </td>
@@ -72,7 +72,7 @@ export const sendStudentCredentials = async ({
 
 // ─── Send Teacher Username + Password ────────────────────────────────────────
 export const sendTeacherCredentials = async ({
-  full_name, email, password, employee_no, section_handled,
+  full_name, email, password, employee_no,
 }) => {
   await getTransporter().sendMail({
     from: `"SignVibe Admin" <${process.env.MAIL_USER}>`,
@@ -88,14 +88,13 @@ export const sendTeacherCredentials = async ({
         </div>
         <p style="color:#333;font-size:15px;">Hi <strong>${full_name}</strong>,</p>
         <p style="color:#555;font-size:14px;">
-          Your teacher account has been created. You are assigned to handle <strong>${section_handled}</strong>
-          (Employee No: <strong>${employee_no}</strong>).
+          Your teacher account has been created (Employee No: <strong>${employee_no}</strong>).
           Use the credentials below to log in to SignVibe:
         </p>
         <div style="background:#f0fafa;border:1px solid #b2dfdb;border-left:5px solid #008080;padding:20px;border-radius:10px;margin:24px 0;">
           <table style="width:100%;border-collapse:collapse;">
             <tr>
-              <td style="padding:8px 0;color:#555;font-size:13px;width:100px;"><strong>Username</strong></td>
+              <td style="padding:8px 0;color:#555;font-size:13px;width:100px;"><strong>Email Address</strong></td>
               <td style="padding:8px 0;">
                 <code style="background:#e0f4f4;color:#00695c;padding:4px 10px;border-radius:5px;font-size:14px;">${email}</code>
               </td>

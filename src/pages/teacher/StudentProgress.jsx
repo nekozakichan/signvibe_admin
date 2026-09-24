@@ -252,7 +252,7 @@ export default function StudentProgress() {
             <div>
               <h6 className="fw-semibold mb-0">{student?.full_name}</h6>
               <small className="text-muted">
-                {student?.grade_level} - {student?.section}
+                Grade {student?.grade_level}
               </small>
             </div>
           </div>

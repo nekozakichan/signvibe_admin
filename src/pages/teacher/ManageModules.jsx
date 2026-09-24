@@ -17,6 +17,202 @@ import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebas
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import { useAuth } from '../../context/AuthContext';
+import {
+  GRADE_LEVELS,
+  quizItemsForGrade,
+  loadQuizLimits,
+  saveQuizLimits,
+  FALLBACK_LIMITS,
+} from '../../config/quizLimits';
+
+// ─── Quiz length per grade ────────────────────────────────────────────────────
+// Younger grades sit a shorter quiz, so a module needs enough questions to
+// cover the longest one. The numbers come from settings/quiz_limits in
+// Firestore — the same document the Android app reads — so editing them here
+// changes what students actually get, with no app release needed.
+function QuizCoverage({ total }) {
+  const { currentUser } = useAuth();
+
+  const [limits, setLimits] = useState(FALLBACK_LIMITS);
+  const [loadingLimits, setLoadingLimits] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    loadQuizLimits().then((loaded) => {
+      if (!alive) return;
+      setLimits(loaded);
+      setLoadingLimits(false);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const startEditing = () => {
+    setDraft({ ...limits.itemsByGrade });
+    setError('');
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    const invalid = GRADE_LEVELS.find((g) => {
+      const value = Number(draft[g]);
+      return !Number.isFinite(value) || value < 1 || value > 100;
+    });
+    if (invalid) {
+      setError(`Grade ${invalid} needs a number between 1 and 100.`);
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await saveQuizLimits(draft, {
+        defaultItems: limits.defaultItems,
+        uid: currentUser?.uid,
+      });
+      setLimits(saved);
+      setEditing(false);
+    } catch (err) {
+      console.error(err);
+      setError('Could not save: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const longest = Math.max(...GRADE_LEVELS.map((g) => quizItemsForGrade(g, limits)));
+
+  return (
+    <div
+      className="rounded-3 p-3 mb-3"
+      style={{ backgroundColor: '#f0fafa', border: '1px solid #b2dfdb' }}
+    >
+      <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <p className="small fw-semibold mb-0" style={{ color: '#00695c' }}>
+          <i className="bi bi-list-check me-1"></i>
+          Items each grade will be given
+        </p>
+        {!editing && !loadingLimits && (
+          <button
+            type="button"
+            className="btn btn-sm btn-link p-0 text-decoration-none"
+            style={{ color: '#00838A', fontSize: 12 }}
+            onClick={startEditing}
+          >
+            <i className="bi bi-pencil me-1"></i>Edit
+          </button>
+        )}
+      </div>
+
+      {loadingLimits ? (
+        <p className="small mb-0" style={{ color: '#666' }}>Loading quiz settings…</p>
+      ) : editing ? (
+        <>
+          <div className="row g-2 mb-2">
+            {GRADE_LEVELS.map((grade) => (
+              <div key={grade} className="col-6 col-md-4 col-lg-2">
+                <label className="form-label mb-1" style={{ fontSize: 11, color: '#00695c' }}>
+                  Grade {grade}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  className="form-control form-control-sm rounded-3"
+                  value={draft[grade] ?? ''}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, [grade]: e.target.value }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          {error && <p className="small text-danger mb-2">{error}</p>}
+
+          <div className="d-flex gap-2">
+            <button
+              type="button"
+              className="btn btn-sm rounded-3 text-white"
+              style={{ backgroundColor: '#00838A' }}
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving
+                ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</>
+                : <><i className="bi bi-check-lg me-1"></i>Save for all modules</>}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary rounded-3"
+              onClick={() => setEditing(false)}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="small mb-0 mt-2" style={{ color: '#666' }}>
+            These apply to every module and to the mobile app — students pick up
+            the change the next time they open a quiz.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="d-flex flex-wrap gap-2">
+            {GRADE_LEVELS.map((grade) => {
+              const needed = quizItemsForGrade(grade, limits);
+              const covered = total >= needed;
+              return (
+                <span
+                  key={grade}
+                  className={`badge rounded-pill ${
+                    covered
+                      ? 'bg-success bg-opacity-10 text-success'
+                      : 'bg-warning bg-opacity-10 text-warning'
+                  }`}
+                  style={{ fontWeight: 500, fontSize: 12 }}
+                  title={
+                    covered
+                      ? `Grade ${grade} gets the full ${needed} items`
+                      : `Grade ${grade} needs ${needed} — only ${total} available`
+                  }
+                >
+                  Grade {grade}: {Math.min(total, needed)}/{needed}
+                </span>
+              );
+            })}
+          </div>
+
+          <p className="small mb-0 mt-2" style={{ color: '#666' }}>
+            {total >= longest ? (
+              <>
+                This module has <strong>{total}</strong> questions — enough for every grade.
+                Each student gets a random selection of their grade&apos;s size.
+              </>
+            ) : (
+              <>
+                This module has <strong>{total}</strong> question{total === 1 ? '' : 's'}.
+                Add <strong>{longest - total}</strong> more to give the longest quiz its
+                full length — grades in amber above will sit a shorter one until then.
+              </>
+            )}
+          </p>
+
+          {limits.source === 'fallback' && (
+            <p className="small mb-0 mt-2" style={{ color: '#a16207' }}>
+              <i className="bi bi-exclamation-triangle me-1"></i>
+              Using built-in defaults — no saved settings found. Press <strong>Edit</strong>,
+              then Save, to store them so the mobile app reads the same numbers.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 // Max icon upload size, to keep Storage usage sane for small square icons
 const MAX_ICON_SIZE_MB = 2;
@@ -350,6 +546,8 @@ function ManageQuizModal({ module, lessons, onClose }) {
 
         {!showForm && (
           <>
+            {!loading && <QuizCoverage total={questions.length} />}
+
             <button
               className="btn rounded-3 fw-medium mb-3 text-white"
               style={{ backgroundColor: '#00838A' }}

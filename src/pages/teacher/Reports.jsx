@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from '../../api/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
@@ -6,12 +6,47 @@ import Navbar from '../../components/Navbar';
 import Logo from '../../components/Logo';
 import { ListSkeleton } from '../../components/Skeletons';
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// completed_at may be a Firestore Timestamp, a plain ISO string, or missing.
+function formatDate(value) {
+  if (!value) return '—';
+  const date = value.seconds
+    ? new Date(value.seconds * 1000)
+    : new Date(value);
+  return isNaN(date.getTime())
+    ? '—'
+    : date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function moduleLabel(moduleId) {
+  return (moduleId || 'Unknown module').replace(/_/g, ' ');
+}
+
+// Wrap anything containing a comma or quote so names don't split the CSV.
+function csvCell(value) {
+  const text = value === null || value === undefined ? '' : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadCSV(filename, headers, rows) {
+  const csv = [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Reports() {
   const [students, setStudents] = useState([]);
   const [lessonsCompletedMap, setLessonsCompletedMap] = useState({});
-  const [pointsMap, setPointsMap] = useState({});
+  const [quizResults, setQuizResults] = useState([]);
   const [totalLessons, setTotalLessons] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [quizFilter, setQuizFilter] = useState('all');
 
   useEffect(() => {
     const fetch = async () => {
@@ -29,15 +64,11 @@ export default function Reports() {
         counts[studentId] = (counts[studentId] || 0) + 1;
       });
       setLessonsCompletedMap(counts);
-      
-      // Total stars per student, summed from quiz_results.stars_earned.
+
+      // Every quiz attempt — drives the stars total, the per-student averages
+      // and the Quiz Results breakdown below.
       const quizSnap = await getDocs(collection(db, 'quiz_results'));
-      const stars = {};
-      quizSnap.docs.forEach((d) => {
-        const { student_id, stars_earned } = d.data();
-        if (student_id) stars[student_id] = (stars[student_id] || 0) + (stars_earned || 0);
-      });
-      setPointsMap(stars);
+      setQuizResults(quizSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
 
       // Total published lessons — denominator for the progress bar and remarks.
       const lessonsSnap = await getDocs(
@@ -50,28 +81,47 @@ export default function Reports() {
     fetch();
   }, []);
 
-  const pointsFor = (id) => pointsMap[id] || 0;
+  // ─── Derived data ──────────────────────────────────────────────────────────
 
-  const handlePrint = () => window.print();
+  // One pass over the attempts: stars, count and average score per student.
+  const quizStats = useMemo(() => {
+    const byStudent = {};
+    quizResults.forEach((q) => {
+      const id = q.student_id;
+      if (!id) return;
+      if (!byStudent[id]) byStudent[id] = { stars: 0, attempts: 0, percentTotal: 0, passed: 0 };
+      byStudent[id].stars += q.stars_earned || 0;
+      byStudent[id].attempts += 1;
+      byStudent[id].percentTotal += q.percentage || 0;
+      if (q.passed) byStudent[id].passed += 1;
+    });
+    return byStudent;
+  }, [quizResults]);
 
-  const handleExportCSV = () => {
-    const headers = ['Name', 'Grade', 'Section', 'Lessons Completed', 'Total Stars'];
-    const rows = students.map((s) => [
-      s.full_name,
-      s.grade_level,
-      s.section,
-      lessonsCompletedMap[s.id] || 0,
-      pointsFor(s.id),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `signvibe_report_${new Date().toLocaleDateString()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const statsFor = (id) =>
+    quizStats[id] || { stars: 0, attempts: 0, percentTotal: 0, passed: 0 };
+
+  const pointsFor = (id) => statsFor(id).stars;
+  const quizzesTakenFor = (id) => statsFor(id).attempts;
+  const avgScoreFor = (id) => {
+    const { attempts, percentTotal } = statsFor(id);
+    return attempts > 0 ? Math.round(percentTotal / attempts) : null;
   };
+
+  const studentNames = useMemo(() => {
+    const map = {};
+    students.forEach((s) => { map[s.id] = s.full_name || 'Unknown student'; });
+    return map;
+  }, [students]);
+
+  // Newest attempt first, optionally narrowed to one student.
+  const visibleQuizzes = useMemo(() => {
+    const rows = quizFilter === 'all'
+      ? quizResults
+      : quizResults.filter((q) => q.student_id === quizFilter);
+    const time = (q) => (q.completed_at?.seconds ? q.completed_at.seconds * 1000 : new Date(q.completed_at || 0).getTime() || 0);
+    return [...rows].sort((a, b) => time(b) - time(a));
+  }, [quizResults, quizFilter]);
 
   const avgLessonsDone = students.length > 0
     ? Math.round(
@@ -83,6 +133,47 @@ export default function Reports() {
     ? Math.round(students.reduce((a, s) => a + pointsFor(s.id), 0) / students.length)
     : 0;
 
+  // Class average across every attempt, not an average of averages.
+  const avgQuizScore = quizResults.length > 0
+    ? Math.round(quizResults.reduce((a, q) => a + (q.percentage || 0), 0) / quizResults.length)
+    : 0;
+
+  // ─── Actions ───────────────────────────────────────────────────────────────
+
+  const handlePrint = () => window.print();
+
+  const handleExportSummary = () => {
+    downloadCSV(
+      `signvibe_summary_${new Date().toLocaleDateString('en-CA')}.csv`,
+      ['Name', 'Grade', 'Lessons Completed', 'Quizzes Taken', 'Avg. Score (%)', 'Total Stars'],
+      students.map((s) => [
+        s.full_name,
+        s.grade_level,
+        lessonsCompletedMap[s.id] || 0,
+        quizzesTakenFor(s.id),
+        avgScoreFor(s.id) ?? '',
+        pointsFor(s.id),
+      ])
+    );
+  };
+
+  const handleExportQuizzes = () => {
+    downloadCSV(
+      `signvibe_quiz_scores_${new Date().toLocaleDateString('en-CA')}.csv`,
+      ['Student', 'Module', 'Score', 'Total Questions', 'Percentage', 'Stars', 'Result', 'Date Taken'],
+      visibleQuizzes.map((q) => [
+        studentNames[q.student_id] || 'Unknown student',
+        moduleLabel(q.module_id),
+        q.score ?? '',
+        q.total_questions ?? '',
+        q.percentage ?? '',
+        q.stars_earned ?? 0,
+        q.passed ? 'Passed' : 'Not passed',
+        formatDate(q.completed_at),
+      ])
+    );
+  };
+
   return (
     <div className="d-flex">
       <Sidebar />
@@ -90,7 +181,7 @@ export default function Reports() {
         <Navbar title="Reports" />
 
         <div className="p-4 sv-page">
-          <div className="d-flex justify-content-between align-items-center mb-4">
+          <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
             <div>
               <h6 className="fw-semibold mb-0">Student Performance Report</h6>
               <small className="text-muted">
@@ -99,13 +190,21 @@ export default function Reports() {
                 })}
               </small>
             </div>
-            <div className="d-flex gap-2">
+            <div className="d-flex gap-2 flex-wrap">
               <button
                 className="btn btn-outline-secondary rounded-3"
-                onClick={handleExportCSV}
+                onClick={handleExportSummary}
               >
                 <i className="bi bi-filetype-csv me-2"></i>
-                Export CSV
+                Export Summary
+              </button>
+              <button
+                className="btn btn-outline-secondary rounded-3"
+                onClick={handleExportQuizzes}
+                disabled={visibleQuizzes.length === 0}
+              >
+                <i className="bi bi-filetype-csv me-2"></i>
+                Export Quiz Scores
               </button>
               <button
                 className="btn text-white rounded-3"
@@ -135,24 +234,26 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="row g-3 mb-4">
+          <div className="row g-3 mb-4 sv-stagger">
             {[
               { label: 'Total Students', value: students.length, icon: 'bi-people-fill', color: '#00838A' },
+              { label: 'Quizzes Taken', value: quizResults.length, icon: 'bi-pencil-square', color: '#6A1B9A' },
+              { label: 'Avg. Quiz Score', value: `${avgQuizScore}%`, icon: 'bi-percent', color: '#2E7D32' },
               { label: 'Avg. Stars', value: avgPoints, icon: 'bi-star-fill', color: '#F57F17' },
               { label: 'Avg. Lessons Done', value: avgLessonsDone, icon: 'bi-book-fill', color: '#1565C0' },
             ].map((s, i) => (
-              <div key={i} className="col-md-4">
-                <div className="card border-0 shadow-sm rounded-4">
+              <div key={i} className="col-xl col-md-4 col-sm-6">
+                <div className="card border-0 shadow-sm rounded-4 h-100 sv-stat" style={{ color: s.color }}>
                   <div className="card-body d-flex align-items-center gap-3">
                     <div
-                      className="rounded-3 d-flex align-items-center justify-content-center"
-                      style={{ width: 48, height: 48, backgroundColor: `${s.color}18` }}
+                      className="rounded-3 d-flex align-items-center justify-content-center sv-stat-icon"
+                      style={{ width: 48, height: 48, backgroundColor: `${s.color}18`, flexShrink: 0 }}
                     >
                       <i className={`bi ${s.icon} fs-5`} style={{ color: s.color }}></i>
                     </div>
-                    <div>
+                    <div className="overflow-hidden">
                       <p className="text-muted small mb-0">{s.label}</p>
-                      <h4 className="fw-bold mb-0" style={{ color: s.color }}>{s.value}</h4>
+                      <h4 className="fw-bold mb-0 sv-stat-value" style={{ color: s.color }}>{s.value}</h4>
                     </div>
                   </div>
                 </div>
@@ -160,7 +261,8 @@ export default function Reports() {
             ))}
           </div>
 
-          <div className="card border-0 shadow-sm rounded-4">
+          {/* ─── Per-student summary ─────────────────────────────────────── */}
+          <div className="card border-0 shadow-sm rounded-4 mb-4">
             <div className="card-body p-0">
               {loading ? (
                 <div className="p-3"><ListSkeleton rows={6} /></div>
@@ -172,8 +274,9 @@ export default function Reports() {
                         <th className="ps-4 py-3">#</th>
                         <th>Student Name</th>
                         <th>Grade</th>
-                        <th>Section</th>
                         <th>Lessons Completed</th>
+                        <th>Quizzes Taken</th>
+                        <th>Avg. Score</th>
                         <th>Total Stars</th>
                         <th className="pe-4">Remarks</th>
                       </tr>
@@ -181,7 +284,7 @@ export default function Reports() {
                     <tbody>
                       {students.length === 0 ? (
                         <tr>
-                          <td colSpan="7" className="text-center py-5 text-muted">
+                          <td colSpan="8" className="text-center py-5 text-muted">
                             No student data available
                           </td>
                         </tr>
@@ -191,6 +294,7 @@ export default function Reports() {
                           .map((s, i) => {
                             const done = lessonsCompletedMap[s.id] || 0;
                             const percent = totalLessons > 0 ? (done / totalLessons) * 100 : 0;
+                            const avgScore = avgScoreFor(s.id);
                             const remarks =
                               percent >= 80
                                 ? { label: 'Excellent', color: 'success' }
@@ -205,7 +309,6 @@ export default function Reports() {
                                 <td className="ps-4 text-muted small">{i + 1}</td>
                                 <td className="fw-medium">{s.full_name}</td>
                                 <td className="text-muted small">{s.grade_level}</td>
-                                <td className="text-muted small">{s.section}</td>
                                 <td>
                                   <div className="d-flex align-items-center gap-2">
                                     <div
@@ -223,6 +326,10 @@ export default function Reports() {
                                     <span className="small text-muted">{done}</span>
                                   </div>
                                 </td>
+                                <td className="text-muted small">{quizzesTakenFor(s.id)}</td>
+                                <td className="fw-semibold" style={{ color: '#2E7D32' }}>
+                                  {avgScore === null ? <span className="text-muted fw-normal">—</span> : `${avgScore}%`}
+                                </td>
                                 <td className="fw-bold" style={{ color: '#F57F17' }}>
                                   {pointsFor(s.id)}
                                 </td>
@@ -235,6 +342,100 @@ export default function Reports() {
                             );
                           })
                       )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ─── Every quiz attempt ──────────────────────────────────────── */}
+          <div className="card border-0 shadow-sm rounded-4">
+            <div className="card-body p-4 pb-0">
+              <div className="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+                <div>
+                  <h6 className="fw-semibold mb-1">Quiz Results</h6>
+                  <p className="text-muted small mb-0">
+                    Every quiz taken, with the score the student earned
+                  </p>
+                </div>
+                {students.length > 0 && (
+                  <select
+                    className="form-select form-select-sm rounded-3"
+                    style={{ maxWidth: 260 }}
+                    value={quizFilter}
+                    onChange={(e) => setQuizFilter(e.target.value)}
+                    aria-label="Filter quiz results by student"
+                  >
+                    <option value="all">All students ({quizResults.length})</option>
+                    {[...students]
+                      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.full_name} ({quizzesTakenFor(s.id)})
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            <div className="card-body p-0">
+              {loading ? (
+                <div className="p-3"><ListSkeleton rows={5} /></div>
+              ) : visibleQuizzes.length === 0 ? (
+                <div className="text-center py-5 text-muted">
+                  <i className="bi bi-pencil-square fs-1 d-block mb-2 opacity-25"></i>
+                  {quizResults.length === 0
+                    ? 'No quizzes have been taken yet'
+                    : 'This student has not taken any quiz yet'}
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-hover mb-0 align-middle">
+                    <thead className="table-light">
+                      <tr>
+                        <th className="ps-4 py-3">Student</th>
+                        <th>Module</th>
+                        <th>Score</th>
+                        <th>Percentage</th>
+                        <th>Stars</th>
+                        <th>Result</th>
+                        <th className="pe-4">Date Taken</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleQuizzes.map((q) => (
+                        <tr key={q.id}>
+                          <td className="ps-4 fw-medium">
+                            {studentNames[q.student_id] || (
+                              <span className="text-muted fw-normal">Unknown student</span>
+                            )}
+                          </td>
+                          <td className="text-capitalize">{moduleLabel(q.module_id)}</td>
+                          <td className="text-muted small">
+                            {q.score ?? '—'} / {q.total_questions ?? '—'}
+                          </td>
+                          <td className="fw-semibold" style={{ color: '#00838A' }}>
+                            {q.percentage ?? 0}%
+                          </td>
+                          <td className="fw-semibold" style={{ color: '#F57F17' }}>
+                            {'⭐'.repeat(q.stars_earned || 0) || '—'}
+                          </td>
+                          <td>
+                            <span
+                              className={`badge rounded-pill ${
+                                q.passed
+                                  ? 'bg-success bg-opacity-10 text-success'
+                                  : 'bg-warning bg-opacity-10 text-warning'
+                              } px-3`}
+                            >
+                              {q.passed ? 'Passed' : 'Not passed'}
+                            </span>
+                          </td>
+                          <td className="pe-4 text-muted small">{formatDate(q.completed_at)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

@@ -1,4 +1,5 @@
 import { auth, db } from '../config/firebase.js';
+import { FieldValue } from 'firebase-admin/firestore';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -59,4 +60,25 @@ export const generatePasswordResetLink = async (email) => {
   };
   const link = await auth.generatePasswordResetLink(email, actionCodeSettings);
   return link;
+};
+
+// ─── Credential vault housekeeping ────────────────────────────────────────────
+
+/** Resolve an account's uid from its email, via Firebase Auth. */
+export const getUidByEmail = async (email) => {
+  const user = await auth.getUserByEmail(email);
+  return user.uid;
+};
+
+/**
+ * Called when a password reset link goes out. The generated password we hold
+ * may no longer be the real one — the user is about to choose their own — so
+ * drop it and leave a marker. "Send Credentials" then says so plainly instead
+ * of emailing a password that silently doesn't work any more.
+ */
+export const markPasswordReset = async (uid) => {
+  await db.collection('user_credentials').doc(uid).set({
+    password_enc: FieldValue.delete(),
+    password_reset_at: new Date().toISOString(),
+  }, { merge: true });
 };

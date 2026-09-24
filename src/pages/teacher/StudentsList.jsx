@@ -19,7 +19,7 @@ function generatePassword() {
 function AddStudentModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
-    email: '', grade_level: '', section: '',
+    email: '', grade_level: '',
   });
   const [generatedPassword] = useState(generatePassword());
   const [loading, setLoading] = useState(false);
@@ -35,9 +35,9 @@ function AddStudentModal({ onClose, onSuccess }) {
   };
 
   const handleSubmit = async () => {
-    const { first_name, last_name, email, grade_level, section } = form;
-    if (!first_name.trim() || !last_name.trim() || !email.trim() || !grade_level || !section.trim()) {
-      setError('First name, last name, email, grade, and section are required.');
+    const { first_name, last_name, email, grade_level } = form;
+    if (!first_name.trim() || !last_name.trim() || !email.trim() || !grade_level) {
+      setError('First name, last name, email, and grade are required.');
       return;
     }
     setLoading(true);
@@ -102,18 +102,12 @@ function AddStudentModal({ onClose, onSuccess }) {
           <input name="email" type="email" className="form-control rounded-3" placeholder="student@gmail.com" value={form.email} onChange={handleChange} />
         </div>
 
-        <div className="row g-3 mb-3">
-          <div className="col-6">
-            <label className="form-label fw-medium small">Grade Level</label>
-            <select name="grade_level" className="form-select rounded-3" value={form.grade_level} onChange={handleChange}>
-              <option value="">-- Select Grade --</option>
-              {[1,2,3,4,5,6].map((g) => <option key={g} value={g}>Grade {g}</option>)}
-            </select>
-          </div>
-          <div className="col-6">
-            <label className="form-label fw-medium small">Section</label>
-            <input name="section" type="text" className="form-control rounded-3" placeholder="e.g. Sampaguita" value={form.section} onChange={handleChange} />
-          </div>
+        <div className="mb-3">
+          <label className="form-label fw-medium small">Grade Level</label>
+          <select name="grade_level" className="form-select rounded-3" value={form.grade_level} onChange={handleChange}>
+            <option value="">-- Select Grade --</option>
+            {[1,2,3,4,5,6].map((g) => <option key={g} value={g}>Grade {g}</option>)}
+          </select>
         </div>
 
         <div className="mb-4">
@@ -513,7 +507,7 @@ export default function StudentsList() {
                         <th className="ps-4 py-3">#</th>
                         <th>Student Name</th>
                         <th>Email / Username</th>
-                        <th>Grade & Section</th>
+                        <th>Grade Level</th>
                         <th>Lessons</th>
                         <th>Stars</th>
                         <th className="pe-4 text-end">Actions</th>
@@ -542,7 +536,7 @@ export default function StudentsList() {
                             <td className="small" style={{ color: '#444' }}>{s.email}</td>
                             <td>
                               <span className="badge rounded-pill" style={{ backgroundColor: '#00838A18', color: '#00838A', fontWeight: 500, fontSize: 12 }}>
-                                Grade {s.grade_level} – {s.section}
+                                Grade {s.grade_level}
                               </span>
                             </td>
                             <td><span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3">{lessonsCompletedMap[s.id] || 0}</span></td>
