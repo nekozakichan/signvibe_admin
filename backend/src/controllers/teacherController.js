@@ -80,11 +80,13 @@ export const createTeacher = async (req, res) => {
       updated_at: new Date().toISOString(),
     });
 
+    // The password is never sent back to the browser — it would show up in the
+    // network tab and in any logged response. It reaches the teacher only
+    // through "Send Credentials", straight from the vault to their Gmail.
     return res.status(201).json({
       success: true,
       message: 'Teacher account created successfully.',
       uid,
-      generatedPassword: password,
     });
   } catch (err) {
     const message = err.message || 'Unknown error';

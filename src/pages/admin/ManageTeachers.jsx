@@ -7,26 +7,16 @@ import { ListSkeleton } from '../../components/Skeletons';
 import { API_BASE } from '../../config/api';
 import { buildFullName } from '../../utils/name';
 
-function generatePassword() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
-  return Array.from({ length: 10 }, () =>
-    chars.charAt(Math.floor(Math.random() * chars.length))
-  ).join('');
-}
-
 // ─── Create Teacher Modal ─────────────────────────────────────────────────────
 function CreateTeacherModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
     email: '', employee_no: '',
   });
-  const [generatedPassword] = useState(generatePassword());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
 
   const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
-  const copyPassword = () => { navigator.clipboard.writeText(generatedPassword); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
   const handleSubmit = async () => {
     const { first_name, last_name, email, employee_no } = form;
@@ -39,7 +29,7 @@ function CreateTeacherModal({ onClose, onSuccess }) {
       const res = await fetch(`${API_BASE}/api/teachers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create teacher.');
-      onSuccess({ ...form, full_name: buildFullName(form), password: data.generatedPassword });
+      onSuccess({ ...form, full_name: buildFullName(form) });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
@@ -79,16 +69,12 @@ function CreateTeacherModal({ onClose, onSuccess }) {
           <label className="form-label fw-medium small">Employee No.</label>
           <input name="employee_no" type="text" className="form-control rounded-3" placeholder="e.g. EMP-001" value={form.employee_no} onChange={handleChange} />
         </div>
-        <div className="mb-4">
-          <label className="form-label fw-medium small">Auto-Generated Password</label>
-          <div className="input-group">
-            <input type="text" readOnly className="form-control rounded-start-3" style={{ backgroundColor: '#f0fafa', letterSpacing: 2, fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#111' }} value={generatedPassword} />
-            <button className="btn btn-outline-secondary rounded-end-3" onClick={copyPassword} type="button">
-              <i className={`bi ${copied ? 'bi-check-lg text-success' : 'bi-clipboard'}`}></i>
-              <span className="ms-1 small">{copied ? 'Copied!' : 'Copy'}</span>
-            </button>
-          </div>
-          <p className="mt-1" style={{ fontSize: 11, color: '#666' }}>Use the <strong>"Send"</strong> button in the table to email it to the teacher anytime.</p>
+        <div className="mb-4 p-3 rounded-3 d-flex align-items-start gap-2" style={{ backgroundColor: '#f0fafa', border: '1px solid #b2dfdb' }}>
+          <i className="bi bi-shield-lock-fill mt-1" style={{ color: '#008080' }}></i>
+          <p className="mb-0" style={{ fontSize: 12, color: '#555' }}>
+            A secure password is generated automatically and stored encrypted. It is never shown here —
+            use the <strong>"Send"</strong> button in the table to email it to the teacher's Gmail.
+          </p>
         </div>
         <div className="d-flex gap-2">
           <button className="btn flex-fill rounded-3 fw-medium" style={{ backgroundColor: '#008080', color: '#fff' }} onClick={handleSubmit} disabled={loading}>
@@ -103,10 +89,8 @@ function CreateTeacherModal({ onClose, onSuccess }) {
 
 // ─── Account Created Modal ────────────────────────────────────────────────────
 function AccountCreatedModal({ teacher, onClose, onSendNow }) {
-  const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const copy = (text) => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   const handleSendNow = async () => { setSending(true); await onSendNow(); setSending(false); setSent(true); };
 
   return (
@@ -118,23 +102,7 @@ function AccountCreatedModal({ teacher, onClose, onSendNow }) {
         </div>
         <h5 className="fw-bold mb-1" style={{ color: '#008080' }}>Account Created!</h5>
         <p className="small mb-4" style={{ color: '#555' }}>The account for <strong>{teacher.full_name}</strong> has been created successfully.</p>
-        <div className="text-start p-3 rounded-3 mb-4" style={{ backgroundColor: '#f0fafa', border: '1px solid #b2dfdb' }}>
-          <p className="fw-semibold small mb-2" style={{ color: '#008080' }}><i className="bi bi-person-badge-fill me-1"></i>Login Credentials</p>
-          <div className="mb-2">
-            <span style={{ fontSize: 12, color: '#555' }}>Username (Email)</span>
-            <code className="d-block mt-1 px-2 py-1 rounded" style={{ backgroundColor: '#e0f4f4', color: '#005f5f', fontSize: 13 }}>{teacher.email}</code>
-          </div>
-          <div>
-            <span style={{ fontSize: 12, color: '#555' }}>Password</span>
-            <div className="d-flex align-items-center gap-2 mt-1">
-              <code className="flex-fill px-2 py-1 rounded" style={{ backgroundColor: '#e0f4f4', color: '#005f5f', fontSize: 15, fontWeight: 700, letterSpacing: 2 }}>{teacher.password}</code>
-              <button className="btn btn-sm btn-outline-secondary rounded-2" onClick={() => copy(teacher.password)}>
-                <i className={`bi ${copied ? 'bi-check-lg text-success' : 'bi-clipboard'}`}></i>
-              </button>
-            </div>
-          </div>
-        </div>
-        <p className="small mb-4" style={{ color: '#555' }}>Send these credentials to <strong>{teacher.email}</strong> right now?</p>
+        <p className="small mb-4" style={{ color: '#555' }}>Send the login credentials to <strong>{teacher.email}</strong> right now?</p>
         <div className="d-flex gap-2">
           {!sent ? (
             <button className="btn flex-fill rounded-3 fw-medium" style={{ backgroundColor: '#008080', color: '#fff' }} onClick={handleSendNow} disabled={sending}>

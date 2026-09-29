@@ -41,18 +41,39 @@ function generatePassword() {
   ).join('');
 }
 
+/**
+ * Normalise a Philippine mobile number to 09XXXXXXXXX. Accepts the common ways
+ * people type one — 09171234567, 0917 123 4567, 0917-123-4567, +639171234567,
+ * 639171234567 — and returns null for anything that isn't a PH mobile number.
+ */
+function normalizePhMobile(raw) {
+  if (typeof raw !== 'string') return null;
+  const digits = raw.replace(/[\s\-().]/g, '').replace(/^\+/, '');
+  if (/^09\d{9}$/.test(digits)) return digits;
+  if (/^639\d{9}$/.test(digits)) return '0' + digits.slice(2);
+  return null;
+}
+
 function buildFullName(first_name, middle_name, last_name) {
   return [first_name, middle_name, last_name].filter((p) => p && p.trim()).join(' ').trim();
 }
 
 // ─── POST /api/students — Create account only, do NOT auto-email ──────────────
 export const createStudent = async (req, res) => {
-  const { first_name, middle_name, last_name, email, grade_level } = req.body;
+  const { first_name, middle_name, last_name, email, grade_level, parent_contact } = req.body;
 
-  if (!first_name || !last_name || !email || !grade_level) {
+  if (!first_name || !last_name || !email || !grade_level || !parent_contact) {
     return res.status(400).json({
       success: false,
-      message: 'first_name, last_name, email, and grade_level are required.',
+      message: 'first_name, last_name, email, grade_level, and parent_contact are required.',
+    });
+  }
+
+  const parentContact = normalizePhMobile(parent_contact);
+  if (!parentContact) {
+    return res.status(400).json({
+      success: false,
+      message: "Parent's contact number must be a valid PH mobile number, e.g. 09171234567.",
     });
   }
 
@@ -76,6 +97,7 @@ export const createStudent = async (req, res) => {
       role: 'student',
       status: 'active',
       grade_level: String(grade_level),
+      parent_contact: parentContact,
       lessons_completed: 0,
       total_points: 0,
       created_at: new Date().toISOString(),
@@ -88,11 +110,13 @@ export const createStudent = async (req, res) => {
       updated_at: new Date().toISOString(),
     });
 
+    // The password is never sent back to the browser — it would show up in the
+    // network tab and in any logged response. It reaches the student only
+    // through "Send Credentials", straight from the vault to their Gmail.
     return res.status(201).json({
       success: true,
       message: 'Student account created successfully.',
       uid,
-      generatedPassword: password,
     });
   } catch (err) {
     const message = err.message || 'Unknown error';

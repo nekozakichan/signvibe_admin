@@ -8,36 +8,39 @@ import { ListSkeleton } from '../../components/Skeletons';
 import { API_BASE } from '../../config/api';
 import { buildFullName } from '../../utils/name';
 
-function generatePassword() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
-  return Array.from({ length: 10 }, () =>
-    chars.charAt(Math.floor(Math.random() * chars.length))
-  ).join('');
+// Same rule as the backend: a PH mobile number, stored as 09XXXXXXXXX.
+function normalizePhMobile(raw) {
+  const digits = String(raw || '').replace(/[\s\-().]/g, '').replace(/^\+/, '');
+  if (/^09\d{9}$/.test(digits)) return digits;
+  if (/^639\d{9}$/.test(digits)) return '0' + digits.slice(2);
+  return null;
+}
+
+// 09171234567 -> 0917 123 4567, for reading at a glance in the table.
+function formatPhMobile(num) {
+  return /^09\d{9}$/.test(num || '') ? `${num.slice(0, 4)} ${num.slice(4, 7)} ${num.slice(7)}` : num;
 }
 
 // ─── Add Student Modal ────────────────────────────────────────────────────────
 function AddStudentModal({ onClose, onSuccess }) {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
-    email: '', grade_level: '',
+    email: '', grade_level: '', parent_contact: '',
   });
-  const [generatedPassword] = useState(generatePassword());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
 
   const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
-  const copyPassword = () => {
-    navigator.clipboard.writeText(generatedPassword);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const handleSubmit = async () => {
-    const { first_name, last_name, email, grade_level } = form;
-    if (!first_name.trim() || !last_name.trim() || !email.trim() || !grade_level) {
-      setError('First name, last name, email, and grade are required.');
+    const { first_name, last_name, email, grade_level, parent_contact } = form;
+    if (!first_name.trim() || !last_name.trim() || !email.trim() || !grade_level || !parent_contact.trim()) {
+      setError("First name, last name, email, grade, and parent's contact number are required.");
+      return;
+    }
+    const parentContact = normalizePhMobile(parent_contact);
+    if (!parentContact) {
+      setError("Parent's contact number must be a valid PH mobile number, e.g. 09171234567.");
       return;
     }
     setLoading(true);
@@ -46,11 +49,11 @@ function AddStudentModal({ onClose, onSuccess }) {
       const res = await fetch(`${API_BASE}/api/students`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form }),
+        body: JSON.stringify({ ...form, parent_contact: parentContact }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create student.');
-      onSuccess({ ...form, full_name: buildFullName(form), password: data.generatedPassword });
+      onSuccess({ ...form, full_name: buildFullName(form) });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -110,23 +113,28 @@ function AddStudentModal({ onClose, onSuccess }) {
           </select>
         </div>
 
-        <div className="mb-4">
-          <label className="form-label fw-medium small">Auto-Generated Password</label>
+        <div className="mb-3">
+          <label className="form-label fw-medium small">Parent's Contact Number</label>
           <div className="input-group">
+            <span className="input-group-text bg-white rounded-start-3"><i className="bi bi-telephone-fill" style={{ color: '#008080' }}></i></span>
             <input
-              type="text"
-              readOnly
-              className="form-control rounded-start-3"
-              style={{ backgroundColor: '#f0fafa', letterSpacing: 2, fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#111' }}
-              value={generatedPassword}
+              name="parent_contact"
+              type="tel"
+              inputMode="tel"
+              maxLength={16}
+              className="form-control rounded-end-3"
+              placeholder="e.g. 09171234567"
+              value={form.parent_contact}
+              onChange={handleChange}
             />
-            <button className="btn btn-outline-secondary rounded-end-3" onClick={copyPassword} type="button" title="Copy password">
-              <i className={`bi ${copied ? 'bi-check-lg text-success' : 'bi-clipboard'}`}></i>
-              <span className="ms-1 small">{copied ? 'Copied!' : 'Copy'}</span>
-            </button>
           </div>
-          <p className="mt-1" style={{ fontSize: 11, color: '#666' }}>
-            This password is auto-generated and will be saved. You can send it to the student's Gmail anytime using the <strong>"Send Credentials"</strong> button.
+        </div>
+
+        <div className="mb-4 p-3 rounded-3 d-flex align-items-start gap-2" style={{ backgroundColor: '#f0fafa', border: '1px solid #b2dfdb' }}>
+          <i className="bi bi-shield-lock-fill mt-1" style={{ color: '#008080' }}></i>
+          <p className="mb-0" style={{ fontSize: 12, color: '#555' }}>
+            A secure password is generated automatically and stored encrypted. It is never shown here —
+            use the <strong>"Send Credentials"</strong> button to email it to the student's Gmail anytime.
           </p>
         </div>
 
@@ -151,15 +159,8 @@ function AddStudentModal({ onClose, onSuccess }) {
 
 // ─── Account Created Modal ─────────────────────────────────────────────────────
 function AccountCreatedModal({ student, onClose, onSendNow }) {
-  const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-
-  const copy = (text) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const handleSendNow = async () => {
     setSending(true);
@@ -180,29 +181,8 @@ function AccountCreatedModal({ student, onClose, onSendNow }) {
         <h5 className="fw-bold mb-1" style={{ color: '#008080' }}>Account Created!</h5>
         <p className="small mb-4" style={{ color: '#555' }}>The account for <strong>{student.full_name}</strong> has been created successfully.</p>
 
-        <div className="text-start p-3 rounded-3 mb-4" style={{ backgroundColor: '#f0fafa', border: '1px solid #b2dfdb' }}>
-          <p className="fw-semibold small mb-2" style={{ color: '#008080' }}>
-            <i className="bi bi-person-fill me-1"></i>Login Credentials
-          </p>
-          <div className="mb-2">
-            <span style={{ fontSize: 12, color: '#555' }}>Username (Email)</span>
-            <div className="d-flex align-items-center gap-2 mt-1">
-              <code className="flex-fill px-2 py-1 rounded" style={{ backgroundColor: '#e0f4f4', color: '#005f5f', fontSize: 13 }}>{student.email}</code>
-            </div>
-          </div>
-          <div>
-            <span style={{ fontSize: 12, color: '#555' }}>Password</span>
-            <div className="d-flex align-items-center gap-2 mt-1">
-              <code className="flex-fill px-2 py-1 rounded" style={{ backgroundColor: '#e0f4f4', color: '#005f5f', fontSize: 15, fontWeight: 700, letterSpacing: 2 }}>{student.password}</code>
-              <button className="btn btn-sm btn-outline-secondary rounded-2" onClick={() => copy(student.password)}>
-                <i className={`bi ${copied ? 'bi-check-lg text-success' : 'bi-clipboard'}`}></i>
-              </button>
-            </div>
-          </div>
-        </div>
-
         <p className="small mb-4" style={{ color: '#555' }}>
-          Do you want to send these credentials to <strong>{student.email}</strong> right now?
+          Do you want to send the login credentials to <strong>{student.email}</strong> right now?
         </p>
 
         <div className="d-flex gap-2">
@@ -508,6 +488,7 @@ export default function StudentsList() {
                         <th>Student Name</th>
                         <th>Email / Username</th>
                         <th>Grade Level</th>
+                        <th>Parent's Contact</th>
                         <th>Lessons</th>
                         <th>Stars</th>
                         <th className="pe-4 text-end">Actions</th>
@@ -516,7 +497,7 @@ export default function StudentsList() {
                     <tbody>
                       {filtered.length === 0 ? (
                         <tr>
-                          <td colSpan="7" className="text-center py-5" style={{ color: '#555' }}>
+                          <td colSpan="8" className="text-center py-5" style={{ color: '#555' }}>
                             <i className="bi bi-people fs-1 d-block mb-2 opacity-25"></i>
                             {view === 'active' ? 'No students found' : 'No archived students'}
                           </td>
@@ -538,6 +519,15 @@ export default function StudentsList() {
                               <span className="badge rounded-pill" style={{ backgroundColor: '#00838A18', color: '#00838A', fontWeight: 500, fontSize: 12 }}>
                                 Grade {s.grade_level}
                               </span>
+                            </td>
+                            <td className="small text-nowrap">
+                              {s.parent_contact ? (
+                                <a href={`tel:${s.parent_contact}`} className="text-decoration-none" style={{ color: '#444' }} title="Call parent">
+                                  <i className="bi bi-telephone-fill me-1" style={{ color: '#008080' }}></i>{formatPhMobile(s.parent_contact)}
+                                </a>
+                              ) : (
+                                <span style={{ color: '#999' }}>—</span>
+                              )}
                             </td>
                             <td><span className="badge bg-success bg-opacity-10 text-success rounded-pill px-3">{lessonsCompletedMap[s.id] || 0}</span></td>
                             <td><span className="fw-semibold" style={{ color: '#F57F17' }}>{pointsMap[s.id] || 0} ⭐</span></td>
