@@ -215,10 +215,21 @@ function AccountCreatedModal({ student, onClose, onSendNow }) {
 
 // ─── Archive Modal (replaces permanent delete) ─────────────────────────────────
 function ArchiveModal({ student, onClose, onConfirm, loading }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+  const presets = ['Transferred to another school', 'Completed Grade 6', 'No longer enrolled', 'Long-term absence', 'Duplicate account'];
+
+  const handleConfirm = () => {
+    const trimmed = reason.trim();
+    if (!trimmed) { setError('Please give a reason — it will be emailed to the student.'); return; }
+    setError('');
+    onConfirm(trimmed);
+  };
+
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1040 }} />
-      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '100%', maxWidth: 420, backgroundColor: '#fff', borderRadius: 16, padding: 32, zIndex: 1050, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div onClick={loading ? undefined : onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1040 }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '100%', maxWidth: 480, backgroundColor: '#fff', borderRadius: 16, padding: 32, zIndex: 1050, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="text-center mb-4">
           <div className="rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{ width: 64, height: 64, backgroundColor: '#fff3e0' }}>
             <i className="bi bi-archive-fill fs-2" style={{ color: '#d97706' }}></i>
@@ -229,9 +240,42 @@ function ArchiveModal({ student, onClose, onConfirm, loading }) {
             Archived tab, keeping their progress records intact. You can restore it anytime.
           </p>
         </div>
+
+        <div className="mb-3">
+          <label className="form-label fw-medium small mb-1">Reason for archiving</label>
+          <div className="d-flex flex-wrap gap-1 mb-2">
+            {presets.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className="btn btn-sm rounded-pill"
+                style={{ fontSize: 12, backgroundColor: reason === p ? '#d97706' : '#fff3e0', color: reason === p ? '#fff' : '#9a5b05', border: 'none' }}
+                onClick={() => { setReason(p); setError(''); }}
+                disabled={loading}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+          <textarea
+            className={`form-control rounded-3 ${error ? 'is-invalid' : ''}`}
+            rows={3}
+            maxLength={500}
+            placeholder="Pick one above or write your own message…"
+            value={reason}
+            onChange={(e) => { setReason(e.target.value); if (error) setError(''); }}
+            disabled={loading}
+          />
+          {error && <div className="invalid-feedback d-block">{error}</div>}
+          <div className="d-flex justify-content-between mt-1" style={{ fontSize: 11, color: '#666' }}>
+            <span><i className="bi bi-envelope me-1"></i>This message will be emailed to <strong>{student.email}</strong>.</span>
+            <span>{reason.length}/500</span>
+          </div>
+        </div>
+
         <div className="d-flex gap-2">
-          <button className="btn btn-danger flex-fill rounded-3 fw-medium text-white" style={{ backgroundColor: '#d97706', borderColor: '#d97706' }} onClick={onConfirm} disabled={loading}>
-            {loading ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-archive-fill me-1"></i>Yes, Archive</>}
+          <button className="btn btn-danger flex-fill rounded-3 fw-medium text-white" style={{ backgroundColor: '#d97706', borderColor: '#d97706' }} onClick={handleConfirm} disabled={loading}>
+            {loading ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-archive-fill me-1"></i>Archive &amp; Send</>}
           </button>
           <button className="btn btn-outline-secondary flex-fill rounded-3" onClick={onClose} disabled={loading}>Cancel</button>
         </div>
@@ -387,14 +431,20 @@ export default function StudentsList() {
     }
   };
 
-  const handleArchive = async () => {
+  const handleArchive = async (reason) => {
     if (!archiveTarget) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/students/${archiveTarget.id}/archive`, { method: 'PATCH' });
+      const res = await fetch(`${API_BASE}/api/students/${archiveTarget.id}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setToast({ type: 'success', message: 'Student archived', sub: `${displayName(archiveTarget)} was moved to Archived.` });
+      setToast(data.emailSent
+        ? { type: 'success', message: 'Student archived', sub: `${displayName(archiveTarget)} was moved to Archived and the reason was emailed to ${archiveTarget.email}.` }
+        : { type: 'error', message: 'Archived, but email not sent', sub: data.message });
       setArchiveTarget(null);
       fetchStudents();
     } catch (err) {
@@ -511,7 +561,14 @@ export default function StudentsList() {
                                 <div className="rounded-circle d-flex align-items-center justify-content-center" style={{ width: 36, height: 36, backgroundColor: '#00838A18', flexShrink: 0 }}>
                                   <i className="bi bi-person-fill" style={{ color: '#00838A' }}></i>
                                 </div>
-                                <span className="fw-medium">{displayName(s)}</span>
+                                <div>
+                                  <span className="fw-medium">{displayName(s)}</span>
+                                  {view === 'archived' && s.archive_reason && (
+                                    <div className="small" style={{ color: '#9a5b05', maxWidth: 320, whiteSpace: 'pre-line' }} title="Reason for archiving">
+                                      <i className="bi bi-archive me-1"></i>{s.archive_reason}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             <td className="small" style={{ color: '#444' }}>{s.email}</td>

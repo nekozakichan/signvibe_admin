@@ -169,3 +169,63 @@ export const sendPasswordResetEmail = async ({ full_name, email, reset_link }) =
       </div>`,
   });
 };
+// ─── Account Archived Notice ──────────────────────────────────────────────────
+// The reason is typed by an admin or teacher, so it is escaped before going
+// into the HTML — otherwise a stray "<" breaks the email, and pasted markup
+// would render as real links/images in the recipient's inbox.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export const sendAccountArchivedEmail = async ({ full_name, email, reason, role }) => {
+  const accountType = role === 'teacher' ? 'teacher' : 'student';
+  const contact = role === 'teacher' ? 'the SignVibe admin' : 'your teacher';
+  const safeName = escapeHtml(full_name);
+  const safeEmail = escapeHtml(email);
+  // Keep the line breaks the sender typed.
+  const safeReason = escapeHtml(reason).replace(/\r?\n/g, '<br/>');
+
+  await getTransporter().sendMail({
+    from: `"SignVibe Admin" <${process.env.MAIL_USER}>`,
+    to: email,
+    subject: 'SignVibe – Your account has been archived',
+    text:
+      `Hi ${full_name},\n\n` +
+      `Your SignVibe ${accountType} account (${email}) has been archived, so you can no longer log in.\n\n` +
+      `Reason:\n${reason}\n\n` +
+      `Your records have been kept. If you think this is a mistake, please contact ${contact} ` +
+      `to have your account restored.\n\n` +
+      `This email was sent by SignVibe Admin. Do not reply to this email.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:28px;border:1px solid #e0e0e0;border-radius:14px;">
+        <div style="text-align:center;margin-bottom:28px;">
+          <div style="display:inline-block;background:#008080;padding:12px 24px;border-radius:8px;">
+            <h2 style="color:#fff;margin:0;font-size:20px;">📚 SignVibe</h2>
+          </div>
+          <p style="color:#555;margin-top:12px;font-size:15px;">Account Archived</p>
+        </div>
+        <p style="color:#333;font-size:15px;">Hi <strong>${safeName}</strong>,</p>
+        <p style="color:#555;font-size:14px;">
+          Your SignVibe ${accountType} account (<strong>${safeEmail}</strong>) has been archived,
+          so you can no longer log in.
+        </p>
+        <div style="background:#fff8e1;border:1px solid #ffe082;border-left:5px solid #d97706;padding:16px 20px;border-radius:10px;margin:24px 0;">
+          <p style="margin:0 0 6px;color:#78550a;font-size:13px;font-weight:bold;">Reason</p>
+          <p style="margin:0;color:#444;font-size:14px;line-height:1.5;">${safeReason}</p>
+        </div>
+        <p style="color:#555;font-size:14px;">
+          Your records have been kept. If you think this is a mistake, please contact
+          ${contact} to have your account restored.
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+        <p style="color:#aaa;font-size:11px;text-align:center;margin:0;">
+          This email was sent by SignVibe Admin. Do not reply to this email.
+        </p>
+      </div>`,
+  });
+};

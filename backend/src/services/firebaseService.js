@@ -34,11 +34,13 @@ export const setUserDisabled = async (uid, disabled) => {
 // ─── Archive a user: disable their Auth account + mark the Firestore record ───
 // This replaces hard-deletion so records (and any related history/progress
 // data linked by uid) are preserved instead of being destroyed.
-export const archiveUserRecord = async (uid) => {
+// The reason is kept on the record so the Archived tab can show why.
+export const archiveUserRecord = async (uid, reason = '') => {
   await setUserDisabled(uid, true);
   await setFirestoreDocument('users', uid, {
     status: 'archived',
     archived_at: new Date().toISOString(),
+    archive_reason: reason,
   });
 };
 
@@ -48,6 +50,7 @@ export const restoreUserRecord = async (uid) => {
   await setFirestoreDocument('users', uid, {
     status: 'active',
     archived_at: null,
+    archive_reason: null,
     restored_at: new Date().toISOString(),
   });
 };

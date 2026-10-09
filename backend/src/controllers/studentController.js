@@ -5,8 +5,11 @@ import {
   archiveUserRecord,
   restoreUserRecord,
 } from '../services/firebaseService.js';
-import { sendStudentCredentials } from '../services/mailerService.js';
+import { sendStudentCredentials, sendAccountArchivedEmail } from '../services/mailerService.js';
 import { encryptPassword, decryptPassword } from '../services/credentialVault.js';
+
+// Archive reasons are emailed and shown in the Archived tab — keep them short.
+const MAX_ARCHIVE_REASON = 500;
 
 /**
  * Where a generated password lives now: encrypted, in user_credentials/{uid},
@@ -162,9 +165,36 @@ export const toggleStudentStatus = async (req, res) => {
 // Firestore record as archived so progress/history data is preserved.
 export const archiveStudent = async (req, res) => {
   const { uid } = req.params;
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  if (!reason) {
+    return res.status(400).json({ success: false, message: 'Please give a reason for archiving this account.' });
+  }
+  if (reason.length > MAX_ARCHIVE_REASON) {
+    return res.status(400).json({ success: false, message: `Keep the reason under ${MAX_ARCHIVE_REASON} characters.` });
+  }
   try {
-    await archiveUserRecord(uid);
-    return res.json({ success: true, message: 'Student archived.' });
+    const { db } = await import('../config/firebase.js');
+    const doc = await db.collection('users').doc(uid).get();
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, message: 'Student not found.' });
+    }
+    const { email, full_name, first_name, middle_name, last_name } = doc.data();
+    const name = full_name || buildFullName(first_name, middle_name, last_name);
+
+    await archiveUserRecord(uid, reason);
+
+    // The archive has already happened; a failed email shouldn't undo it or
+    // report it as failed. Say so instead, so the sender can follow up.
+    try {
+      await sendAccountArchivedEmail({ full_name: name, email, reason, role: 'student' });
+    } catch (mailErr) {
+      return res.json({
+        success: true,
+        emailSent: false,
+        message: `Student archived, but the email to ${email} could not be sent: ${mailErr.message}`,
+      });
+    }
+    return res.json({ success: true, emailSent: true, message: `Student archived. The reason was emailed to ${email}.` });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
