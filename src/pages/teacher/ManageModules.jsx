@@ -12,6 +12,7 @@ import {
   query,
   where,
   deleteField,
+  writeBatch,
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import Sidebar from '../../components/Sidebar';
@@ -24,6 +25,7 @@ import {
   saveQuizLimits,
   FALLBACK_LIMITS,
 } from '../../config/quizLimits';
+import { FSL_DAYS, lessonDay, dayTopics } from '../../config/fslDays';
 
 // ─── Quiz length per grade ────────────────────────────────────────────────────
 // Younger grades sit a shorter quiz, so a module needs enough questions to
@@ -226,6 +228,7 @@ function ModuleFormModal({ initial, nextOrder, onClose, onSave, saving }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
     order: initial?.order ?? nextOrder,
+    day: lessonDay(initial) ?? '',
   });
   const [iconFile, setIconFile] = useState(null);
   const [iconPreview, setIconPreview] = useState(initial?.icon_url || null);
@@ -281,6 +284,23 @@ function ModuleFormModal({ initial, nextOrder, onClose, onSave, saving }) {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
+        </div>
+        <div className="mb-3">
+          <label className="form-label small fw-medium">Day</label>
+          <select
+            className="form-select rounded-3"
+            value={form.day}
+            onChange={(e) => setForm({ ...form, day: e.target.value })}
+          >
+            <option value="">No day (not part of the 9-day outline)</option>
+            {FSL_DAYS.map((d) => (
+              <option key={d.day} value={d.day}>Day {d.day} – {d.topics}</option>
+            ))}
+          </select>
+          <small style={{ color: '#666' }}>
+            Every lesson in this module is placed in this day automatically.
+            {initial && ' Changing it moves all of the module\'s lessons too.'}
+          </small>
         </div>
         <div className="mb-3">
           <label className="form-label small fw-medium">Module Icon <span style={{ color: '#777', fontSize: 11 }}>(optional — upload an image)</span></label>
@@ -635,6 +655,10 @@ function ManageModulesPanel({ modules, onClose, onAdd, onEdit, onArchive, onRest
             </div>
             <div className="flex-fill">
               <p className="fw-semibold mb-0">{m.name}</p>
+              <p className="small mb-0" style={{ color: lessonDay(m) ? '#00838A' : '#999' }}>
+                <i className="bi bi-calendar-week me-1"></i>
+                {lessonDay(m) ? `Day ${lessonDay(m)} – ${dayTopics(lessonDay(m))}` : 'No day'}
+              </p>
             </div>
             {/* Manage Quiz — only for non-tracing modules (tracing = Alphabet/Numbers) */}
             {!TRACING_MODULE_IDS.includes(moduleIdOf(m.name)) && (
@@ -687,6 +711,7 @@ export default function ManageModules() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [filter, setFilter] = useState('All');
+  const [dayFilter, setDayFilter] = useState('all'); // 'all' | 1–9 | 'none'
   const [form, setForm] = useState({
     module: '',
     title: '',
@@ -739,10 +764,12 @@ export default function ManageModules() {
         try { await deleteObject(ref(storage, previousIconUrl)); } catch { /* file may already be gone */ }
       }
 
+      const day = moduleForm.day ? Number(moduleForm.day) : null;
       const payload = {
         name: moduleForm.name,
         order: moduleForm.order,
         icon_url: icon_url || null,
+        day,
       };
 
       if (editingModule) {
@@ -759,6 +786,19 @@ export default function ManageModules() {
           created_at: serverTimestamp(),
         });
       }
+      // Lessons follow their module's day. Write it onto each lesson as well, so
+      // anything reading lessons on their own (the Android app) gets the same day.
+      if (editingModule && lessonDay(editingModule) !== day) {
+        const ids = new Set([moduleIdOf(editingModule.name), moduleIdOf(moduleForm.name)]);
+        const toUpdate = lessons.filter((l) => ids.has(l.module_id) && lessonDay(l) !== day);
+        for (let i = 0; i < toUpdate.length; i += 400) {
+          const batch = writeBatch(db);
+          toUpdate.slice(i, i + 400).forEach((l) => batch.update(doc(db, 'lessons', l.id), { day }));
+          await batch.commit();
+        }
+        if (toUpdate.length) await fetchLessons();
+      }
+
       await fetchModules();
       setShowModuleForm(false);
       setEditingModule(null);
@@ -816,6 +856,7 @@ export default function ManageModules() {
             description: form.description,
             video_url: videoUrl,
             order: form.order,
+            day: moduleDayById[moduleIdOf(form.module)] ?? null,
             teacher_id: currentUser?.uid,
             created_at: serverTimestamp(),
             status: 'published',
@@ -884,8 +925,40 @@ export default function ManageModules() {
     }
   };
 
-  const filtered =
+  // A lesson's day comes from its module. Lessons whose module has no day keep
+  // any day saved on the lesson itself (e.g. one tagged before modules had days).
+  const moduleDayById = {};
+  modules.forEach((m) => { moduleDayById[moduleIdOf(m.name)] = lessonDay(m); });
+  const dayOf = (l) => moduleDayById[l.module_id] ?? lessonDay(l);
+
+  const byModule =
     filter === 'All' ? lessons : lessons.filter((l) => l.module_title === filter);
+
+  // Lesson count per day for the filter chips (within the chosen module).
+  const dayCounts = byModule.reduce((acc, l) => {
+    const key = dayOf(l) ?? 'none';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const filtered = byModule.filter((l) => {
+    if (dayFilter === 'all') return true;
+    if (dayFilter === 'none') return dayOf(l) === null;
+    return dayOf(l) === dayFilter;
+  });
+
+  // Day 1 … Day 9, then lessons with no day yet. Order within a day as before.
+  const dayGroups = [
+    ...FSL_DAYS.map((d) => ({ key: d.day, title: `Day ${d.day}`, topics: d.topics })),
+    { key: 'none', title: 'No day assigned', topics: 'Set a day on these lessons\' module (Manage Modules → Edit) to place them' },
+  ]
+    .map((g) => ({
+      ...g,
+      lessons: filtered
+        .filter((l) => (dayOf(l) ?? 'none') === g.key)
+        .sort((a, b) => (a.order || 0) - (b.order || 0)),
+    }))
+    .filter((g) => g.lessons.length > 0);
 
   return (
     <div className="d-flex">
@@ -933,6 +1006,35 @@ export default function ManageModules() {
             </div>
           </div>
 
+          {/* Day filter */}
+          {!loading && byModule.length > 0 && (
+            <div className="d-flex align-items-center gap-2 flex-wrap mb-4">
+              <span className="small fw-medium me-1" style={{ color: '#555' }}>
+                <i className="bi bi-calendar-week me-1"></i>Day:
+              </span>
+              {[
+                { key: 'all', label: 'All', count: byModule.length },
+                ...FSL_DAYS.map((d) => ({ key: d.day, label: `Day ${d.day}`, count: dayCounts[d.day] || 0, title: d.topics })),
+                ...(dayCounts.none ? [{ key: 'none', label: 'No day', count: dayCounts.none }] : []),
+              ].map((chip) => {
+                const active = dayFilter === chip.key;
+                return (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    className={`btn btn-sm rounded-pill ${active ? 'text-white' : 'btn-outline-secondary'}`}
+                    style={active ? { backgroundColor: '#00838A' } : chip.count === 0 ? { opacity: 0.55 } : {}}
+                    onClick={() => setDayFilter(chip.key)}
+                    title={chip.title}
+                  >
+                    {chip.label}
+                    <span className={`ms-1 small ${active ? '' : 'text-muted'}`}>{chip.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {activeModules.length === 0 && !loading && (
             <div className="alert rounded-4 d-flex align-items-center gap-2" style={{ backgroundColor: '#fff8e1', border: '1px solid #ffe082', color: '#78550a' }}>
               <i className="bi bi-info-circle-fill"></i>
@@ -947,14 +1049,25 @@ export default function ManageModules() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-5" style={{ color: '#555' }}>
               <i className="bi bi-collection fs-1 d-block mb-2 opacity-25"></i>
-              No lessons yet. Add your first FSL lesson!
+              {byModule.length === 0
+                ? 'No lessons yet. Add your first FSL lesson!'
+                : dayFilter === 'none'
+                  ? 'Every lesson here already has a day.'
+                  : `No lessons in Day ${dayFilter} yet (${dayTopics(dayFilter)}).`}
             </div>
           ) : (
+            dayGroups.map((group) => (
+            <section key={group.key} className="mb-4">
+              <div className="d-flex align-items-baseline gap-2 flex-wrap mb-2 pb-2" style={{ borderBottom: '1px solid #e0eeee' }}>
+                <h6 className="fw-bold mb-0" style={{ color: group.key === 'none' ? '#78550a' : '#00838A' }}>
+                  {group.key === 'none' ? <i className="bi bi-question-circle me-1"></i> : <i className="bi bi-calendar-week me-1"></i>}
+                  {group.title}
+                </h6>
+                <span className="small" style={{ color: '#666' }}>{group.topics}</span>
+                <span className="badge rounded-pill bg-light text-dark border ms-auto">{group.lessons.length} lesson{group.lessons.length === 1 ? '' : 's'}</span>
+              </div>
             <div className="row g-3">
-              {filtered
-                .slice()
-                .sort((a, b) => (a.order || 0) - (b.order || 0))
-                .map((lesson) => (
+              {group.lessons.map((lesson) => (
                 <div key={lesson.id} className="col-md-4">
                   <div className="card border-0 shadow-sm rounded-4 h-100">
                     <div
@@ -986,6 +1099,12 @@ export default function ManageModules() {
                       </div>
                       <h6 className="fw-semibold mb-1">{lesson.title}</h6>
                       <p className="small mb-3" style={{ color: '#555' }}>{lesson.description}</p>
+                      {dayOf(lesson) && (
+                        <p className="small mb-3" style={{ color: '#00838A' }}>
+                          <i className="bi bi-calendar-week me-1"></i>Day {dayOf(lesson)}
+                          <span style={{ color: '#888' }}> · from {lesson.module_title}</span>
+                        </p>
+                      )}
                       <div className="d-flex gap-2">
                         <a
                           href={lesson.video_url}
@@ -1008,6 +1127,8 @@ export default function ManageModules() {
                 </div>
               ))}
             </div>
+            </section>
+            ))
           )}
         </div>
       </div>
@@ -1040,6 +1161,17 @@ export default function ManageModules() {
                       ))}
                     </select>
                   </div>
+                  {(() => {
+                    const day = moduleDayById[moduleIdOf(form.module)];
+                    return (
+                      <div className="mb-3 small px-3 py-2 rounded-3" style={{ backgroundColor: '#f0fafa', border: '1px solid #b2dfdb', color: '#00696f' }}>
+                        <i className="bi bi-calendar-week me-1"></i>
+                        {day
+                          ? <>This lesson goes in <strong>Day {day}</strong> ({dayTopics(day)}) — set by the {form.module} module.</>
+                          : <>The {form.module} module has no day, so this lesson won't be in a day. Set one in Manage Modules → Edit.</>}
+                      </div>
+                    );
+                  })()}
                   <div className="mb-3">
                     <label className="form-label small fw-medium">Lesson Title</label>
                     <input

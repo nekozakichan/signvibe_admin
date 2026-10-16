@@ -4,6 +4,7 @@ import cors from 'cors';
 import teacherRoutes from './routes/teacherRoutes.js';
 import studentRoutes from './routes/studentRoutes.js';
 import resetRequestRoutes from './routes/resetRequestRoutes.js';
+import schoolYearRoutes from './routes/schoolYearRoutes.js';
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/reset-requests', resetRequestRoutes);
+app.use('/api/school-year', schoolYearRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'SignVibe API is running', version: '1.0.0' });

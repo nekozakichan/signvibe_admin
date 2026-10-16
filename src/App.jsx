@@ -7,6 +7,7 @@ import LoginPage from './pages/auth/LoginPage';
 // Admin
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ManageTeachers from './pages/admin/ManageTeachers';
+import AcademicSettings from './pages/admin/AcademicSettings';
 
 // Teacher
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
@@ -41,6 +42,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRole="admin">
                 <ManageTeachers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute allowedRole="admin">
+                <AcademicSettings />
               </ProtectedRoute>
             }
           />

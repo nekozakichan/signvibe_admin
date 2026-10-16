@@ -5,6 +5,8 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import Logo from '../../components/Logo';
 import { ListSkeleton } from '../../components/Skeletons';
+import { downloadReportWorkbook } from '../../utils/reportWorkbook';
+import { watchAcademicTerm, termAt, schoolYearFor } from '../../config/academicTerm';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,30 +25,25 @@ function moduleLabel(moduleId) {
   return (moduleId || 'Unknown module').replace(/_/g, ' ');
 }
 
-// Wrap anything containing a comma or quote so names don't split the CSV.
-function csvCell(value) {
-  const text = value === null || value === undefined ? '' : String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function downloadCSV(filename, headers, rows) {
-  const csv = [headers, ...rows].map((r) => r.map(csvCell).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function Reports() {
   const [students, setStudents] = useState([]);
-  const [lessonsCompletedMap, setLessonsCompletedMap] = useState({});
+  const [progressRecords, setProgressRecords] = useState([]);
   const [quizResults, setQuizResults] = useState([]);
   const [totalLessons, setTotalLessons] = useState(0);
   const [loading, setLoading] = useState(true);
   const [quizFilter, setQuizFilter] = useState('all');
+  // School year & semester set by the admin (settings/academic_term).
+  // undefined = still loading, null = never set.
+  const [term, setTerm] = useState(undefined);
+
+  useEffect(() => watchAcademicTerm(setTerm), []);
+
+  // Which period the report covers: 'all', 'sy:2026' (whole school year) or
+  // 'term:2026:2' (one semester). Starts on the current school year.
+  const [period, setPeriod] = useState(null);
+  useEffect(() => {
+    if (period === null && term !== undefined) setPeriod(term ? `sy:${term.startYear}` : 'all');
+  }, [term, period]);
 
   useEffect(() => {
     const fetch = async () => {
@@ -58,12 +55,7 @@ export default function Reports() {
       const progressSnap = await getDocs(
         query(collection(db, 'student_progress'), where('is_completed', '==', true))
       );
-      const counts = {};
-      progressSnap.docs.forEach((d) => {
-        const studentId = d.data().student_id;
-        counts[studentId] = (counts[studentId] || 0) + 1;
-      });
-      setLessonsCompletedMap(counts);
+      setProgressRecords(progressSnap.docs.map((d) => d.data()));
 
       // Every quiz attempt — drives the stars total, the per-student averages
       // and the Quiz Results breakdown below.
@@ -81,12 +73,72 @@ export default function Reports() {
     fetch();
   }, []);
 
+  // ─── Period filter ─────────────────────────────────────────────────────────
+
+  // When each term started. Before any term change has been recorded, treat
+  // everything as the current term.
+  const history = useMemo(() => {
+    if (term?.history?.length) return term.history;
+    return term ? [{ ...term, startedAt: 0 }] : [];
+  }, [term]);
+
+  // Dropdown choices: every school year, and each semester inside it.
+  const periodOptions = useMemo(() => {
+    const years = [];
+    history.forEach((h) => {
+      let y = years.find((x) => x.startYear === h.startYear);
+      if (!y) { y = { startYear: h.startYear, terms: [] }; years.push(y); }
+      if (!y.terms.some((t) => t.semester === h.semester)) y.terms.push(h);
+    });
+    return years.sort((a, b) => b.startYear - a.startYear);
+  }, [history]);
+
+  const periodLabel = useMemo(() => {
+    if (!period || period === 'all') return 'All school years';
+    const [kind, y, sem] = period.split(':');
+    const label = `S.Y. ${schoolYearFor(Number(y))}`;
+    if (kind === 'sy') return label;
+    const t = history.find((h) => h.startYear === Number(y) && h.semester === Number(sem));
+    return `${label} · ${t?.semesterLabel || ''}`;
+  }, [period, history]);
+
+  // Does a dated record fall in the chosen period?
+  const inPeriod = (when) => {
+    if (!period || period === 'all') return true;
+    const t = termAt(history, when);
+    if (!t) return false;
+    const [kind, y, sem] = period.split(':');
+    if (t.startYear !== Number(y)) return false;
+    return kind === 'sy' || t.semester === Number(sem);
+  };
+
+  const periodQuizzes = useMemo(
+    () => quizResults.filter((q) => inPeriod(q.completed_at)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [quizResults, period, history]
+  );
+
+  const lessonsCompletedMap = useMemo(() => {
+    const counts = {};
+    progressRecords.forEach((p) => {
+      if (!p.student_id || !inPeriod(p.completed_at)) return;
+      counts[p.student_id] = (counts[p.student_id] || 0) + 1;
+    });
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressRecords, period, history]);
+
+  // Records with no date can't be placed in a school year.
+  const undatedCount = period && period !== 'all'
+    ? quizResults.filter((q) => !q.completed_at).length + progressRecords.filter((p) => !p.completed_at).length
+    : 0;
+
   // ─── Derived data ──────────────────────────────────────────────────────────
 
   // One pass over the attempts: stars, count and average score per student.
   const quizStats = useMemo(() => {
     const byStudent = {};
-    quizResults.forEach((q) => {
+    periodQuizzes.forEach((q) => {
       const id = q.student_id;
       if (!id) return;
       if (!byStudent[id]) byStudent[id] = { stars: 0, attempts: 0, percentTotal: 0, passed: 0 };
@@ -96,7 +148,7 @@ export default function Reports() {
       if (q.passed) byStudent[id].passed += 1;
     });
     return byStudent;
-  }, [quizResults]);
+  }, [periodQuizzes]);
 
   const statsFor = (id) =>
     quizStats[id] || { stars: 0, attempts: 0, percentTotal: 0, passed: 0 };
@@ -117,11 +169,11 @@ export default function Reports() {
   // Newest attempt first, optionally narrowed to one student.
   const visibleQuizzes = useMemo(() => {
     const rows = quizFilter === 'all'
-      ? quizResults
-      : quizResults.filter((q) => q.student_id === quizFilter);
+      ? periodQuizzes
+      : periodQuizzes.filter((q) => q.student_id === quizFilter);
     const time = (q) => (q.completed_at?.seconds ? q.completed_at.seconds * 1000 : new Date(q.completed_at || 0).getTime() || 0);
     return [...rows].sort((a, b) => time(b) - time(a));
-  }, [quizResults, quizFilter]);
+  }, [periodQuizzes, quizFilter]);
 
   const avgLessonsDone = students.length > 0
     ? Math.round(
@@ -134,45 +186,92 @@ export default function Reports() {
     : 0;
 
   // Class average across every attempt, not an average of averages.
-  const avgQuizScore = quizResults.length > 0
-    ? Math.round(quizResults.reduce((a, q) => a + (q.percentage || 0), 0) / quizResults.length)
+  const avgQuizScore = periodQuizzes.length > 0
+    ? Math.round(periodQuizzes.reduce((a, q) => a + (q.percentage || 0), 0) / periodQuizzes.length)
     : 0;
 
   // ─── Actions ───────────────────────────────────────────────────────────────
 
   const handlePrint = () => window.print();
 
-  const handleExportSummary = () => {
-    downloadCSV(
-      `signvibe_summary_${new Date().toLocaleDateString('en-CA')}.csv`,
-      ['Name', 'Grade', 'Lessons Completed', 'Quizzes Taken', 'Avg. Score (%)', 'Total Stars'],
-      students.map((s) => [
-        s.full_name,
-        s.grade_level,
-        lessonsCompletedMap[s.id] || 0,
-        quizzesTakenFor(s.id),
-        avgScoreFor(s.id) ?? '',
-        pointsFor(s.id),
-      ])
-    );
+  // "SY2026-2027_3rd-Sem_" — so downloaded reports say which term they're from.
+  const termTag = !period || period === 'all'
+    ? 'all-years_'
+    : periodLabel.replace(/^S\.Y\. /, 'SY').replace(' · ', '_').replace(/ Semester$/, '-Sem').replace(/\s+/g, '-') + '_';
+
+  const [exporting, setExporting] = useState(null); // 'summary' | 'quizzes' | null
+
+  const runExport = async (kind, build) => {
+    setExporting(kind);
+    try {
+      await downloadReportWorkbook(build());
+    } catch (err) {
+      console.error(err);
+      alert('Could not create the Excel file: ' + err.message);
+    } finally {
+      setExporting(null);
+    }
   };
 
-  const handleExportQuizzes = () => {
-    downloadCSV(
-      `signvibe_quiz_scores_${new Date().toLocaleDateString('en-CA')}.csv`,
-      ['Student', 'Module', 'Score', 'Total Questions', 'Percentage', 'Stars', 'Result', 'Date Taken'],
-      visibleQuizzes.map((q) => [
-        studentNames[q.student_id] || 'Unknown student',
-        moduleLabel(q.module_id),
-        q.score ?? '',
-        q.total_questions ?? '',
-        q.percentage ?? '',
-        q.stars_earned ?? 0,
-        q.passed ? 'Passed' : 'Not passed',
-        formatDate(q.completed_at),
-      ])
-    );
-  };
+  const today = () => new Date().toLocaleDateString('en-CA');
+
+  const handleExportSummary = () => runExport('summary', () => ({
+    fileName: `signvibe_summary_${termTag}${today()}.xlsx`,
+    sheetName: 'Class Summary',
+    reportName: 'Class Summary',
+    period: periodLabel,
+    columns: [
+      { header: 'Name', width: 32 },
+      { header: 'Grade', width: 9, align: 'center' },
+      { header: 'Lessons Completed', width: 14, align: 'center' },
+      { header: 'Quizzes Taken', width: 12, align: 'center' },
+      { header: 'Avg. Score (%)', width: 12, align: 'center' },
+      { header: 'Total Stars', width: 11, align: 'center' },
+    ],
+    rows: [...students]
+      .sort((a, b) => (Number(a.grade_level) || 0) - (Number(b.grade_level) || 0)
+        || (a.full_name || '').localeCompare(b.full_name || ''))
+      .map((s) => [
+        s.full_name || 'Unknown student',
+        Number(s.grade_level) || s.grade_level || '',
+        lessonsCompletedMap[s.id] || 0,
+        quizzesTakenFor(s.id),
+        avgScoreFor(s.id) ?? '—',
+        pointsFor(s.id),
+      ]),
+  }));
+
+  const handleExportQuizzes = () => runExport('quizzes', () => {
+    const student = quizFilter === 'all' ? null : students.find((s) => s.id === quizFilter);
+    const studentName = student ? (studentNames[student.id] || 'Student') : null;
+    return {
+    fileName: `signvibe_quiz_scores_${studentName ? studentName.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') + '_' : ''}${termTag}${today()}.xlsx`,
+    sheetName: 'Quiz Scores',
+    reportName: 'Quiz Scores',
+    subject: student ? `Student: ${studentName}${student.grade_level ? ` · Grade ${student.grade_level}` : ''}` : null,
+    period: periodLabel,
+    columns: [
+      { header: 'Student', width: 28 },
+      { header: 'Module', width: 20 },
+      { header: 'Score', width: 8, align: 'center' },
+      { header: 'Total Questions', width: 11, align: 'center' },
+      { header: 'Percentage (%)', width: 12, align: 'center' },
+      { header: 'Stars', width: 8, align: 'center' },
+      { header: 'Result', width: 12, align: 'center' },
+      { header: 'Date Taken', width: 15, align: 'center' },
+    ],
+    rows: visibleQuizzes.map((q) => [
+      studentNames[q.student_id] || 'Unknown student',
+      moduleLabel(q.module_id),
+      q.score ?? '',
+      q.total_questions ?? '',
+      q.percentage ?? '',
+      q.stars_earned ?? 0,
+      q.passed ? 'Passed' : 'Not passed',
+      formatDate(q.completed_at),
+    ]),
+    };
+  });
 
   return (
     <div className="d-flex">
@@ -190,20 +289,45 @@ export default function Reports() {
                 })}
               </small>
             </div>
-            <div className="d-flex gap-2 flex-wrap">
+            <div className="d-flex gap-2 flex-wrap align-items-center">
+              <select
+                className="form-select rounded-3"
+                style={{ width: 'auto' }}
+                value={period || 'all'}
+                onChange={(e) => setPeriod(e.target.value)}
+                aria-label="Report period"
+                title="Which school year or semester the report covers"
+              >
+                {periodOptions.map((y) => (
+                  <optgroup key={y.startYear} label={`S.Y. ${schoolYearFor(y.startYear)}`}>
+                    <option value={`sy:${y.startYear}`}>S.Y. {schoolYearFor(y.startYear)} — whole year</option>
+                    {y.terms.length > 1 && y.terms.map((t) => (
+                      <option key={t.semester} value={`term:${t.startYear}:${t.semester}`}>
+                        {schoolYearFor(t.startYear)} · {t.semesterLabel}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+                <option value="all">All school years</option>
+              </select>
               <button
                 className="btn btn-outline-secondary rounded-3"
                 onClick={handleExportSummary}
+                disabled={!!exporting || loading}
               >
-                <i className="bi bi-filetype-csv me-2"></i>
+                {exporting === 'summary'
+                  ? <span className="spinner-border spinner-border-sm me-2"></span>
+                  : <i className="bi bi-file-earmark-excel me-2"></i>}
                 Export Summary
               </button>
               <button
                 className="btn btn-outline-secondary rounded-3"
                 onClick={handleExportQuizzes}
-                disabled={visibleQuizzes.length === 0}
+                disabled={visibleQuizzes.length === 0 || !!exporting}
               >
-                <i className="bi bi-filetype-csv me-2"></i>
+                {exporting === 'quizzes'
+                  ? <span className="spinner-border spinner-border-sm me-2"></span>
+                  : <i className="bi bi-file-earmark-excel me-2"></i>}
                 Export Quiz Scores
               </button>
               <button
@@ -228,16 +352,25 @@ export default function Reports() {
                   SignVibe — Student Progress Report
                 </h5>
                 <p className="text-muted small mb-0">
-                  Urdaneta City SPED Center · Academic Year 2025–2026
+                  Urdaneta City SPED Center
+                  {period ? <> · {periodLabel}</> : null}
                 </p>
               </div>
             </div>
           </div>
 
+          {undatedCount > 0 && (
+            <div className="alert alert-light border small rounded-3 py-2 mb-3" style={{ color: '#555' }}>
+              <i className="bi bi-info-circle me-1"></i>
+              {undatedCount} record{undatedCount === 1 ? ' has' : 's have'} no date, so {undatedCount === 1 ? 'it is' : 'they are'} only
+              counted under <strong>All school years</strong>.
+            </div>
+          )}
+
           <div className="row g-3 mb-4 sv-stagger">
             {[
               { label: 'Total Students', value: students.length, icon: 'bi-people-fill', color: '#00838A' },
-              { label: 'Quizzes Taken', value: quizResults.length, icon: 'bi-pencil-square', color: '#6A1B9A' },
+              { label: 'Quizzes Taken', value: periodQuizzes.length, icon: 'bi-pencil-square', color: '#6A1B9A' },
               { label: 'Avg. Quiz Score', value: `${avgQuizScore}%`, icon: 'bi-percent', color: '#2E7D32' },
               { label: 'Avg. Stars', value: avgPoints, icon: 'bi-star-fill', color: '#F57F17' },
               { label: 'Avg. Lessons Done', value: avgLessonsDone, icon: 'bi-book-fill', color: '#1565C0' },
@@ -367,7 +500,7 @@ export default function Reports() {
                     onChange={(e) => setQuizFilter(e.target.value)}
                     aria-label="Filter quiz results by student"
                   >
-                    <option value="all">All students ({quizResults.length})</option>
+                    <option value="all">All students ({periodQuizzes.length})</option>
                     {[...students]
                       .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
                       .map((s) => (
@@ -386,9 +519,9 @@ export default function Reports() {
               ) : visibleQuizzes.length === 0 ? (
                 <div className="text-center py-5 text-muted">
                   <i className="bi bi-pencil-square fs-1 d-block mb-2 opacity-25"></i>
-                  {quizResults.length === 0
-                    ? 'No quizzes have been taken yet'
-                    : 'This student has not taken any quiz yet'}
+                  {periodQuizzes.length === 0
+                    ? (quizResults.length === 0 ? 'No quizzes have been taken yet' : `No quizzes were taken in ${periodLabel}`)
+                    : 'This student has not taken any quiz in this period'}
                 </div>
               ) : (
                 <div className="table-responsive">

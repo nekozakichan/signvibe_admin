@@ -126,6 +126,14 @@ export default function AdminDashboard() {
                   <i className="bi bi-people me-2"></i>
                   View All Teachers
                 </Link>
+
+                <Link
+                  to="/admin/settings"
+                  className="btn btn-outline-secondary rounded-3"
+                >
+                  <i className="bi bi-calendar3 me-2"></i>
+                  School Year &amp; Semester
+                </Link>
               </div>
             </div>
           </div>

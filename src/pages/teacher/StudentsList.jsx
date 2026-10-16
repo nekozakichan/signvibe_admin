@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import { ListSkeleton } from '../../components/Skeletons';
-import { API_BASE } from '../../config/api';
+import { apiFetch } from '../../config/api';
 import { buildFullName } from '../../utils/name';
 
 // Same rule as the backend: a PH mobile number, stored as 09XXXXXXXXX.
@@ -46,7 +46,7 @@ function AddStudentModal({ onClose, onSuccess }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/students`, {
+      const res = await apiFetch(`/api/students`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, parent_contact: parentContact }),
@@ -403,7 +403,7 @@ export default function StudentsList() {
   };
 
   const doSendCredentials = async (uid) => {
-    const res = await fetch(`${API_BASE}/api/students/${uid}/send-credentials`, { method: 'POST' });
+    const res = await apiFetch(`/api/students/${uid}/send-credentials`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message);
     return data;
@@ -435,7 +435,7 @@ export default function StudentsList() {
     if (!archiveTarget) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/students/${archiveTarget.id}/archive`, {
+      const res = await apiFetch(`/api/students/${archiveTarget.id}/archive`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
@@ -458,7 +458,7 @@ export default function StudentsList() {
     if (!restoreTarget) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/students/${restoreTarget.id}/restore`, { method: 'PATCH' });
+      const res = await apiFetch(`/api/students/${restoreTarget.id}/restore`, { method: 'PATCH' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setToast({ type: 'success', message: 'Student restored', sub: `${displayName(restoreTarget)} is active again.` });

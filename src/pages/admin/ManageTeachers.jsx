@@ -4,7 +4,7 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import { ListSkeleton } from '../../components/Skeletons';
-import { API_BASE } from '../../config/api';
+import { apiFetch } from '../../config/api';
 import { buildFullName } from '../../utils/name';
 
 // ─── Create Teacher Modal ─────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ function CreateTeacherModal({ onClose, onSuccess }) {
     }
     setLoading(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/teachers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form }) });
+      const res = await apiFetch(`/api/teachers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create teacher.');
       onSuccess({ ...form, full_name: buildFullName(form) });
@@ -336,7 +336,7 @@ export default function ManageTeachers() {
 
   const fetchResetRequests = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/reset-requests`);
+      const res = await apiFetch(`/api/reset-requests`);
       const data = await res.json();
       if (data.success) setResetRequests(data.data);
     } catch (err) {
@@ -366,7 +366,7 @@ export default function ManageTeachers() {
   const handleCreated = (teacherData) => { setShowModal(false); setCreatedTeacher(teacherData); fetchTeachers(); };
 
   const doSendCredentials = async (uid) => {
-    const res = await fetch(`${API_BASE}/api/teachers/${uid}/send-credentials`, { method: 'POST' });
+    const res = await apiFetch(`/api/teachers/${uid}/send-credentials`, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message);
     return data;
@@ -392,7 +392,7 @@ export default function ManageTeachers() {
   const handleSendResetLink = async (req) => {
     setResetSendingId(req.id);
     try {
-      const res = await fetch(`${API_BASE}/api/reset-requests/${req.id}/send`, { method: 'POST' });
+      const res = await apiFetch(`/api/reset-requests/${req.id}/send`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setToast({
@@ -409,7 +409,7 @@ export default function ManageTeachers() {
   const handleDismissRequest = async (req) => {
     setDismissingId(req.id);
     try {
-      const res = await fetch(`${API_BASE}/api/reset-requests/${req.id}/dismiss`, { method: 'PATCH' });
+      const res = await apiFetch(`/api/reset-requests/${req.id}/dismiss`, { method: 'PATCH' });
       if (!res.ok) throw new Error('Dismiss failed');
       fetchResetRequests();
     } catch (err) {
@@ -421,7 +421,7 @@ export default function ManageTeachers() {
     const newStatus = teacher.status === 'active' ? 'deactivated' : 'active';
     setToggleLoadingId(teacher.id);
     try {
-      const res = await fetch(`${API_BASE}/api/teachers/${teacher.id}/status`, {
+      const res = await apiFetch(`/api/teachers/${teacher.id}/status`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
@@ -435,7 +435,7 @@ export default function ManageTeachers() {
     if (!archiveTarget) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/teachers/${archiveTarget.id}/archive`, {
+      const res = await apiFetch(`/api/teachers/${archiveTarget.id}/archive`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
@@ -455,7 +455,7 @@ export default function ManageTeachers() {
     if (!restoreTarget) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/teachers/${restoreTarget.id}/restore`, { method: 'PATCH' });
+      const res = await apiFetch(`/api/teachers/${restoreTarget.id}/restore`, { method: 'PATCH' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       setToast({ type: 'success', message: 'Teacher restored', sub: `${displayName(restoreTarget)} is active again.` });

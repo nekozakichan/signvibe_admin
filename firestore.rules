@@ -80,13 +80,17 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
     }
 
-    // App-wide settings — currently settings/quiz_limits, the single source of
-    // truth for how many quiz items each grade sits. Students must be able to
-    // READ it (the app sizes their quiz from it); only staff may change it.
+    // App-wide settings:
+    //   settings/quiz_limits   — quiz items per grade; teachers or admin may change it.
+    //   settings/academic_term — current school year & semester; admin only.
+    // Everyone signed in may READ them (the Android app sizes quizzes from one
+    // and can show the other).
     match /settings/{settingId} {
       allow read: if request.auth != null;
       allow create, update: if request.auth != null
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin'];
+        && (settingId == 'academic_term'
+              ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+              : get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin']);
       allow delete: if false;
     }
   }

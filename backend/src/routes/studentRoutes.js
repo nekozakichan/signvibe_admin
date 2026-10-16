@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireRole } from '../middleware/requireRole.js';
 import {
   createStudent,
   getStudents,
@@ -9,6 +10,9 @@ import {
 } from '../controllers/studentController.js';
 
 const router = Router();
+
+// Student accounts are managed by teachers (and the admin).
+router.use(requireRole('teacher', 'admin'));
 
 router.get('/', getStudents);
 router.post('/', createStudent);

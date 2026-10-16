@@ -43,6 +43,7 @@ export default function Sidebar() {
   const adminLinks = [
     { to: '/admin/dashboard', icon: 'bi-speedometer2', label: 'Dashboard' },
     { to: '/admin/teachers', icon: 'bi-people-fill', label: 'Manage Teachers' },
+    { to: '/admin/settings', icon: 'bi-calendar3', label: 'School Year' },
   ];
 
   const teacherLinks = [
