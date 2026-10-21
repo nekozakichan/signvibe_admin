@@ -223,12 +223,17 @@ const MAX_ICON_SIZE_MB = 2;
 const TRACING_MODULE_IDS = ['alphabet', 'numbers'];
 const moduleIdOf = (name) => (name || '').toLowerCase().replace(/\s/g, '_');
 
+// Whether students see a module. Stored on the module as `visible`; modules
+// created before this setting existed have no field and count as visible.
+const isVisible = (m) => m?.visible !== false;
+
 // ─── Add / Edit Module Modal ───────────────────────────────────────────────────
 function ModuleFormModal({ initial, nextOrder, onClose, onSave, saving }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
     order: initial?.order ?? nextOrder,
     day: lessonDay(initial) ?? '',
+    visible: initial ? isVisible(initial) : true,
   });
   const [iconFile, setIconFile] = useState(null);
   const [iconPreview, setIconPreview] = useState(initial?.icon_url || null);
@@ -330,6 +335,30 @@ function ModuleFormModal({ initial, nextOrder, onClose, onSave, saving }) {
             </div>
           </div>
           <small style={{ color: '#666' }}>PNG, JPG, or SVG, up to {MAX_ICON_SIZE_MB}MB. If left empty, a default icon is shown.</small>
+        </div>
+        <div className="mb-3 p-3 rounded-3 d-flex align-items-center gap-3" style={{ backgroundColor: form.visible ? '#f0fafa' : '#f5f5f5', border: `1px solid ${form.visible ? '#b2dfdb' : '#ddd'}` }}>
+          <div className="form-check form-switch m-0">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              role="switch"
+              id="sv-module-visible"
+              checked={form.visible}
+              onChange={(e) => setForm({ ...form, visible: e.target.checked })}
+              style={{ width: '2.4em', height: '1.3em', cursor: 'pointer' }}
+            />
+          </div>
+          <label htmlFor="sv-module-visible" className="small mb-0" style={{ cursor: 'pointer' }}>
+            <strong style={{ color: form.visible ? '#00838A' : '#666' }}>
+              <i className={`bi ${form.visible ? 'bi-eye-fill' : 'bi-eye-slash-fill'} me-1`}></i>
+              {form.visible ? 'Visible to students' : 'Hidden from students'}
+            </strong>
+            <span className="d-block" style={{ color: '#666' }}>
+              {form.visible
+                ? 'Students can open this module and its lessons in the app.'
+                : 'Students won\'t see this module until you show it. Lessons are kept.'}
+            </span>
+          </label>
         </div>
         <div className="mb-4">
           <label className="form-label small fw-medium">Display Order</label>
@@ -625,7 +654,7 @@ function ManageQuizModal({ module, lessons, onClose }) {
 }
 
 // ─── Manage Modules Panel (list + archive/restore/edit/quiz) ───────────────────
-function ManageModulesPanel({ modules, onClose, onAdd, onEdit, onArchive, onRestore, onManageQuiz }) {
+function ManageModulesPanel({ modules, onClose, onAdd, onEdit, onArchive, onRestore, onManageQuiz, onToggleVisible, togglingId }) {
   const active = modules.filter((m) => m.status !== 'archived');
   const archived = modules.filter((m) => m.status === 'archived');
 
@@ -653,22 +682,41 @@ function ManageModulesPanel({ modules, onClose, onAdd, onEdit, onArchive, onRest
                 ? <img src={m.icon_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 : <i className={`bi ${m.icon || 'bi-collection-fill'}`} style={{ color: '#00838A' }}></i>}
             </div>
-            <div className="flex-fill">
+            <div className="flex-fill" style={{ minWidth: 0 }}>
               <p className="fw-semibold mb-0">{m.name}</p>
               <p className="small mb-0" style={{ color: lessonDay(m) ? '#00838A' : '#999' }}>
                 <i className="bi bi-calendar-week me-1"></i>
                 {lessonDay(m) ? `Day ${lessonDay(m)} – ${dayTopics(lessonDay(m))}` : 'No day'}
               </p>
+              {!isVisible(m) && (
+                <span className="badge rounded-pill mt-1" style={{ backgroundColor: '#eee', color: '#555', fontWeight: 500 }}>
+                  <i className="bi bi-eye-slash-fill me-1"></i>Hidden from students
+                </span>
+              )}
             </div>
+            <button
+              className="btn btn-sm flex-shrink-0 rounded-3"
+              style={isVisible(m)
+                ? { backgroundColor: '#00838A18', color: '#00838A', minWidth: 38 }
+                : { backgroundColor: '#eee', color: '#666', minWidth: 38 }}
+              onClick={() => onToggleVisible(m)}
+              disabled={togglingId === m.id}
+              title={isVisible(m) ? 'Visible to students — click to hide' : 'Hidden from students — click to show'}
+              aria-label={isVisible(m) ? `Hide ${m.name} from students` : `Show ${m.name} to students`}
+            >
+              {togglingId === m.id
+                ? <span className="spinner-border spinner-border-sm" style={{ width: 12, height: 12 }}></span>
+                : <i className={`bi ${isVisible(m) ? 'bi-eye-fill' : 'bi-eye-slash-fill'}`}></i>}
+            </button>
             {/* Manage Quiz — only for non-tracing modules (tracing = Alphabet/Numbers) */}
             {!TRACING_MODULE_IDS.includes(moduleIdOf(m.name)) && (
-              <button className="btn btn-sm rounded-3" style={{ backgroundColor: '#00838A18', color: '#00838A' }}
+              <button className="btn btn-sm flex-shrink-0 rounded-3" style={{ backgroundColor: '#00838A18', color: '#00838A' }}
                 onClick={() => onManageQuiz(m)} title="Manage Quiz">
                 <i className="bi bi-patch-question-fill"></i>
               </button>
             )}
-            <button className="btn btn-sm btn-outline-secondary rounded-3" onClick={() => onEdit(m)} title="Edit"><i className="bi bi-pencil-fill"></i></button>
-            <button className="btn btn-sm rounded-3" style={{ backgroundColor: '#fff3e0', color: '#d97706' }} onClick={() => onArchive(m)} title="Archive"><i className="bi bi-archive-fill"></i></button>
+            <button className="btn btn-sm flex-shrink-0 btn-outline-secondary rounded-3" onClick={() => onEdit(m)} title="Edit"><i className="bi bi-pencil-fill"></i></button>
+            <button className="btn btn-sm flex-shrink-0 rounded-3" style={{ backgroundColor: '#fff3e0', color: '#d97706' }} onClick={() => onArchive(m)} title="Archive"><i className="bi bi-archive-fill"></i></button>
           </div>
         ))}
 
@@ -770,6 +818,7 @@ export default function ManageModules() {
         order: moduleForm.order,
         icon_url: icon_url || null,
         day,
+        visible: moduleForm.visible !== false,
       };
 
       if (editingModule) {
@@ -814,6 +863,22 @@ export default function ManageModules() {
     if (!window.confirm(`Archive "${m.name}"? Existing lessons in this module are kept, but it will be hidden from new lessons.`)) return;
     await updateDoc(doc(db, 'modules', m.id), { status: 'archived' });
     fetchModules();
+  };
+
+  const [togglingId, setTogglingId] = useState(null);
+
+  // Show or hide a module from students. Saved straight away.
+  const handleToggleVisible = async (m) => {
+    const visible = !isVisible(m);
+    setTogglingId(m.id);
+    try {
+      await updateDoc(doc(db, 'modules', m.id), { visible });
+      setModules((prev) => prev.map((x) => (x.id === m.id ? { ...x, visible } : x)));
+    } catch (err) {
+      alert('Could not change visibility: ' + err.message);
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const handleRestoreModule = async (m) => {
@@ -927,6 +992,8 @@ export default function ManageModules() {
 
   // A lesson's day comes from its module. Lessons whose module has no day keep
   // any day saved on the lesson itself (e.g. one tagged before modules had days).
+  const hiddenModuleIds = new Set(modules.filter((m) => !isVisible(m)).map((m) => moduleIdOf(m.name)));
+
   const moduleDayById = {};
   modules.forEach((m) => { moduleDayById[moduleIdOf(m.name)] = lessonDay(m); });
   const dayOf = (l) => moduleDayById[l.module_id] ?? lessonDay(l);
@@ -982,6 +1049,9 @@ export default function ManageModules() {
                     <img src={m.icon_url} alt="" style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'contain' }} />
                   )}
                   {m.name}
+                  {m.id !== 'all' && !isVisible(m) && (
+                    <i className="bi bi-eye-slash-fill ms-1" style={{ opacity: 0.7 }} title="Hidden from students"></i>
+                  )}
                 </button>
               ))}
             </div>
@@ -1091,6 +1161,11 @@ export default function ManageModules() {
                         >
                           {lesson.module_title}
                         </span>
+                        {hiddenModuleIds.has(lesson.module_id) && (
+                          <span className="badge rounded-pill ms-1 me-auto" style={{ backgroundColor: '#eee', color: '#555', fontWeight: 500 }} title="This lesson's module is hidden from students">
+                            <i className="bi bi-eye-slash-fill me-1"></i>Hidden
+                          </span>
+                        )}
                         {lesson.order !== undefined && (
                           <span className="badge bg-light text-dark border">
                             #{lesson.order}
@@ -1289,6 +1364,8 @@ export default function ManageModules() {
           onEdit={(m) => { setEditingModule(m); setShowModuleForm(true); }}
           onArchive={handleArchiveModule}
           onRestore={handleRestoreModule}
+          onToggleVisible={handleToggleVisible}
+          togglingId={togglingId}
           onManageQuiz={(m) => setQuizModule(m)}
         />
       )}
