@@ -5,6 +5,7 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import { Bar } from 'react-chartjs-2';
 import { StatGridSkeleton, CardSkeleton } from '../../components/Skeletons';
+import { loadCurrentStudents } from '../../config/enrollments';
 import {
   Chart as ChartJS, CategoryScale, LinearScale,
   BarElement, Tooltip, Legend,
@@ -16,13 +17,17 @@ export default function ClassOverview() {
   const [students, setStudents] = useState([]);
   const [lessonsCompletedMap, setLessonsCompletedMap] = useState({});
   const [pointsMap, setPointsMap] = useState({});
+  const [schoolYear, setSchoolYear] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetch = async () => {
-      const q = query(collection(db, 'users'), where('role', '==', 'student'));
-      const snap = await getDocs(q);
-      setStudents(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      // Only students enrolled in the current school year (not archived, not
+      // transferred/dropped). Students enrolled only in an upcoming year wait
+      // until that year becomes active.
+      const { year, students: current } = await loadCurrentStudents();
+      setSchoolYear(year);
+      setStudents(current);
 
       // Lessons-completed count per student, from student_progress.
       const progressSnap = await getDocs(
@@ -94,7 +99,7 @@ export default function ClassOverview() {
               {/* Summary stats */}
               <div className="row g-3 mb-4 sv-stagger">
                 {[
-                  { label: 'Total Students', value: students.length, color: '#00838A', icon: 'bi-people-fill' },
+                  { label: schoolYear ? `Students · S.Y. ${schoolYear.schoolYear}` : 'Total Students', value: students.length, color: '#00838A', icon: 'bi-people-fill' },
                   { label: 'Class Avg. Stars', value: classAvgPoints, color: '#1565C0', icon: 'bi-star-fill' },
                   { label: 'Top Performer', value: topPerformer, color: '#F57F17', icon: 'bi-trophy-fill' },
                 ].map((s, i) => (

@@ -6,29 +6,52 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import AnimatedNumber from '../../components/AnimatedNumber';
 import { StatGridSkeleton } from '../../components/Skeletons';
+import { getActiveSchoolYear } from '../../config/schoolYears';
+import { loadEnrollmentsForYear } from '../../config/enrollments';
+
+// Enrollment statuses that mean the student has left during the year. Every
+// other status (enrolled, promoted, retained, completed) still counts.
+const LEFT_STATUSES = ['transferred', 'dropped'];
 
 export default function AdminDashboard() {
-  const [counts, setCounts] = useState({ total: 0, active: 0, deactivated: 0, archived: 0, students: 0 });
+  const [counts, setCounts] = useState({ total: 0, active: 0, archived: 0, students: 0 });
+  const [activeYear, setActiveYear] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     const fetchCounts = async () => {
-      const teacherSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
-      const studentSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+      try {
+        const [teacherSnap, studentSnap, year] = await Promise.all([
+          getDocs(query(collection(db, 'users'), where('role', '==', 'teacher'))),
+          getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
+          getActiveSchoolYear(),
+        ]);
 
-      const teachers = teacherSnap.docs.map((d) => d.data());
-      const active = teachers.filter((t) => t.status === 'active').length;
-      const archived = teachers.filter((t) => t.status === 'archived').length;
-      const deactivated = teachers.filter((t) => t.status && t.status !== 'active' && t.status !== 'archived').length;
+        const teachers = teacherSnap.docs.map((d) => d.data());
+        const archived = teachers.filter((t) => t.status === 'archived').length;
+        const active = teachers.length - archived;
 
-      setCounts({
-        total: teachers.length,
-        active,
-        deactivated,
-        archived,
-        students: studentSnap.size,
-      });
-      setLoading(false);
+        // Active Students: not archived AND enrolled in the active school year.
+        // A student counts once even if they somehow have two records.
+        const activeStudentIds = new Set(
+          studentSnap.docs.filter((d) => d.data().status !== 'archived').map((d) => d.id)
+        );
+        const enrollments = year ? await loadEnrollmentsForYear(year.id) : [];
+        const enrolledActive = new Set(
+          enrollments
+            .filter((e) => !LEFT_STATUSES.includes(e.status) && activeStudentIds.has(e.student_id))
+            .map((e) => e.student_id)
+        );
+
+        setActiveYear(year);
+        setCounts({ total: teachers.length, active, archived, students: enrolledActive.size });
+      } catch (err) {
+        console.error('Could not load dashboard counts:', err);
+        setLoadError('Could not load the numbers. Refresh the page to try again.');
+      } finally {
+        setLoading(false);
+      }
     };
     fetchCounts();
   }, []);
@@ -36,7 +59,6 @@ export default function AdminDashboard() {
   const stats = [
     { label: 'Total Teachers', value: counts.total, icon: 'bi-person-badge-fill', color: '#00838A' },
     { label: 'Active Teachers', value: counts.active, icon: 'bi-person-check-fill', color: '#1565C0' },
-    { label: 'Deactivated', value: counts.deactivated, icon: 'bi-person-x-fill', color: '#D32F2F' },
     { label: 'Archived', value: counts.archived, icon: 'bi-archive-fill', color: '#d97706' },
   ];
 
@@ -51,12 +73,18 @@ export default function AdminDashboard() {
             Welcome, Admin. Here's your system overview.
           </p>
 
+          {loadError && (
+            <div className="alert alert-danger py-2 small rounded-3 mb-3">
+              <i className="bi bi-exclamation-circle me-1"></i>{loadError}
+            </div>
+          )}
+
           {loading ? (
-            <StatGridSkeleton count={4} />
+            <StatGridSkeleton count={3} />
           ) : (
             <div className="row g-3 mb-4 sv-stagger">
               {stats.map((stat, i) => (
-                <div key={i} className="col-xl-3 col-md-6">
+                <div key={i} className="col-md-4">
                   <div
                     className="card border-0 shadow-sm rounded-4 h-100 sv-stat"
                     style={{ color: stat.color }}
@@ -97,10 +125,15 @@ export default function AdminDashboard() {
                 <i className="bi bi-mortarboard-fill fs-4" style={{ color: '#00838A' }}></i>
               </div>
               <div className="overflow-hidden">
-                <p className="small mb-0" style={{ color: '#555' }}>Total Students (system-wide)</p>
+                <p className="small mb-0" style={{ color: '#555' }}>
+                  Active Students{activeYear ? ` · S.Y. ${activeYear.schoolYear}` : ''}
+                </p>
                 <h3 className="fw-bold mb-0 sv-stat-value" style={{ color: '#00838A' }}>
                   {loading ? '—' : <AnimatedNumber value={counts.students} />}
                 </h3>
+                {!loading && !loadError && !activeYear && (
+                  <small style={{ color: '#777' }}>No active school year — set one in Academic Settings.</small>
+                )}
               </div>
             </div>
           </div>
@@ -132,7 +165,7 @@ export default function AdminDashboard() {
                   className="btn btn-outline-secondary rounded-3"
                 >
                   <i className="bi bi-calendar3 me-2"></i>
-                  School Year &amp; Semester
+                  School Year Management
                 </Link>
               </div>
             </div>

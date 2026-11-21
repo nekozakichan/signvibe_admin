@@ -6,6 +6,7 @@ import Navbar from '../../components/Navbar';
 import { ListSkeleton } from '../../components/Skeletons';
 import { apiFetch } from '../../config/api';
 import { buildFullName } from '../../utils/name';
+import { normalizeEmail, isValidEmail, INVALID_EMAIL_MESSAGE } from '../../utils/email';
 
 // ─── Create Teacher Modal ─────────────────────────────────────────────────────
 function CreateTeacherModal({ onClose, onSuccess }) {
@@ -24,12 +25,17 @@ function CreateTeacherModal({ onClose, onSuccess }) {
       setError('First name, last name, email, and employee no. are required.');
       return;
     }
+    if (!isValidEmail(email)) {
+      setError(INVALID_EMAIL_MESSAGE);
+      return;
+    }
+    const cleanEmail = normalizeEmail(email);
     setLoading(true); setError('');
     try {
-      const res = await apiFetch(`/api/teachers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form }) });
+      const res = await apiFetch(`/api/teachers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, email: cleanEmail }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create teacher.');
-      onSuccess({ ...form, full_name: buildFullName(form) });
+      onSuccess({ ...form, email: cleanEmail, full_name: buildFullName(form) });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
@@ -144,7 +150,7 @@ function ArchiveModal({ teacher, onClose, onConfirm, loading }) {
           </div>
           <h5 className="fw-bold mb-1">Archive Teacher?</h5>
           <p className="small mb-0" style={{ color: '#555' }}>
-            <strong>{teacher.full_name}</strong>'s account will be deactivated and moved to the
+            <strong>{teacher.full_name}</strong> won't be able to log in, and their account moves to the
             Archived tab. Their record is kept and can be restored anytime — nothing is permanently deleted.
           </p>
         </div>
@@ -319,7 +325,6 @@ export default function ManageTeachers() {
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [restoreTarget, setRestoreTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [toggleLoadingId, setToggleLoadingId] = useState(null);
   const [sendLoadingId, setSendLoadingId] = useState(null);
   const [resetSendingId, setResetSendingId] = useState(null);
   const [dismissingId, setDismissingId] = useState(null);
@@ -417,20 +422,6 @@ export default function ManageTeachers() {
     } finally { setDismissingId(null); }
   };
 
-  const toggleStatus = async (teacher) => {
-    const newStatus = teacher.status === 'active' ? 'deactivated' : 'active';
-    setToggleLoadingId(teacher.id);
-    try {
-      const res = await apiFetch(`/api/teachers/${teacher.id}/status`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!res.ok) throw new Error('Status update failed');
-      fetchTeachers();
-    } catch (err) { setToast({ type: 'error', message: 'Update failed', sub: err.message }); }
-    finally { setToggleLoadingId(null); }
-  };
-
   const handleArchive = async (reason) => {
     if (!archiveTarget) return;
     setActionLoading(true);
@@ -465,8 +456,7 @@ export default function ManageTeachers() {
     finally { setActionLoading(false); }
   };
 
-  const activeCount = activeTeachers.filter((t) => t.status === 'active').length;
-  const deactivatedCount = activeTeachers.filter((t) => t.status !== 'active').length;
+  const activeCount = activeTeachers.length;
   const archivedCount = archivedTeachers.length;
 
   return (
@@ -482,10 +472,9 @@ export default function ManageTeachers() {
             {[
               { label: 'Total Teachers', value: teachers.length, icon: 'bi-people-fill', color: '#008080' },
               { label: 'Active', value: activeCount, icon: 'bi-person-check-fill', color: '#2E7D32' },
-              { label: 'Deactivated', value: deactivatedCount, icon: 'bi-person-x-fill', color: '#c62828' },
               { label: 'Archived', value: archivedCount, icon: 'bi-archive-fill', color: '#d97706' },
             ].map((s, i) => (
-              <div key={i} className="col-md-3 col-sm-6">
+              <div key={i} className="col-md-4 col-sm-6">
                 <div className="card border-0 shadow-sm rounded-4">
                   <div className="card-body d-flex align-items-center gap-3 py-3">
                     <div className="rounded-3 d-flex align-items-center justify-content-center" style={{ width: 48, height: 48, backgroundColor: `${s.color}18`, flexShrink: 0 }}>
@@ -598,9 +587,8 @@ export default function ManageTeachers() {
                                   <i className="bi bi-archive-fill me-1" style={{ fontSize: 10 }}></i>Archived
                                 </span>
                               ) : (
-                                <span className={`badge rounded-pill ${t.status === 'active' ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`} style={{ fontSize: 12 }}>
-                                  <i className={`bi ${t.status === 'active' ? 'bi-circle-fill' : 'bi-circle'} me-1`} style={{ fontSize: 8 }}></i>
-                                  {t.status === 'active' ? 'Active' : 'Deactivated'}
+                                <span className="badge rounded-pill bg-success bg-opacity-10 text-success" style={{ fontSize: 12 }}>
+                                  <i className="bi bi-circle-fill me-1" style={{ fontSize: 8 }}></i>Active
                                 </span>
                               )}
                             </td>
@@ -608,9 +596,6 @@ export default function ManageTeachers() {
                               <div className="d-flex justify-content-end gap-1 flex-wrap">
                                 {view === 'active' ? (
                                   <>
-                                    <button className={`btn btn-sm rounded-3 ${t.status === 'active' ? 'btn-outline-secondary' : 'btn-outline-success'}`} onClick={() => toggleStatus(t)} disabled={toggleLoadingId === t.id} title={t.status === 'active' ? 'Deactivate' : 'Activate'}>
-                                      {toggleLoadingId === t.id ? <span className="spinner-border spinner-border-sm"></span> : <i className={`bi ${t.status === 'active' ? 'bi-person-dash-fill' : 'bi-person-check-fill'}`}></i>}
-                                    </button>
                                     <button className="btn btn-sm rounded-3 fw-medium d-flex align-items-center gap-1" style={{ backgroundColor: '#008080', color: '#fff', fontSize: 12 }} onClick={() => handleSendCredentials(t)} disabled={sendLoadingId === t.id} title="Send username & password to Gmail">
                                       {sendLoadingId === t.id ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-envelope-fill"></i><span>Send</span></>}
                                     </button>

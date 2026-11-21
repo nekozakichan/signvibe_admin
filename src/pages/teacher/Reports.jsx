@@ -7,6 +7,7 @@ import Logo from '../../components/Logo';
 import { ListSkeleton } from '../../components/Skeletons';
 import { downloadReportWorkbook } from '../../utils/reportWorkbook';
 import { watchAcademicTerm, termAt, schoolYearFor } from '../../config/academicTerm';
+import { loadAllEnrollments, LEFT_STATUSES } from '../../config/enrollments';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,12 +27,13 @@ function moduleLabel(moduleId) {
 }
 
 export default function Reports() {
-  const [students, setStudents] = useState([]);
+  const [accounts, setAccounts] = useState([]);       // every non-archived student account
+  const [enrollments, setEnrollments] = useState([]); // every enrollment record (all years)
   const [progressRecords, setProgressRecords] = useState([]);
   const [quizResults, setQuizResults] = useState([]);
   const [totalLessons, setTotalLessons] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [quizFilter, setQuizFilter] = useState('all');
+  const [pickedQuizStudent, setQuizFilter] = useState('all');
   // School year & semester set by the admin (settings/academic_term).
   // undefined = still loading, null = never set.
   const [term, setTerm] = useState(undefined);
@@ -49,7 +51,15 @@ export default function Reports() {
     const fetch = async () => {
       const q = query(collection(db, 'users'), where('role', '==', 'student'));
       const snap = await getDocs(q);
-      setStudents(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      // Archived accounts are left out of the reports, same as the dashboard.
+      setAccounts(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((s) => s.status !== 'archived')
+      );
+      // Who was enrolled in which school year — narrows the report to the
+      // students of the chosen year.
+      setEnrollments(await loadAllEnrollments());
 
       // Lessons-completed per student, from student_progress.
       const progressSnap = await getDocs(
@@ -82,6 +92,34 @@ export default function Reports() {
     return term ? [{ ...term, startedAt: 0 }] : [];
   }, [term]);
 
+  // Students in the report: for one school year (or a semester of it), those
+  // enrolled that year — not transferred/dropped — with that year's grade.
+  // For a semester, students enrolled during a LATER semester of that year are
+  // left out (added in the 2nd semester → not in the 1st semester report).
+  // "All school years", or no enrollment records yet, lists every account.
+  const students = useMemo(() => {
+    if (!period || period === 'all' || enrollments.length === 0) return accounts;
+    const [kind, y, sem] = period.split(':');
+    const startYear = Number(y);
+    const semester = Number(sem);
+    const gradeById = new Map(
+      enrollments
+        .filter((e) => {
+          if (Number(e.start_year) !== startYear || LEFT_STATUSES.includes(e.status)) return false;
+          if (kind !== 'term') return true;
+          // Which semester the enrollment was made in. Records with no date,
+          // or made before this school year started (retrieved ahead of
+          // time), count for every semester.
+          const at = termAt(history, e.enrolled_at);
+          return !at || at.startYear !== startYear || at.semester <= semester;
+        })
+        .map((e) => [e.student_id, e.grade_level])
+    );
+    return accounts
+      .filter((a) => gradeById.has(a.id))
+      .map((a) => ({ ...a, grade_level: gradeById.get(a.id) }));
+  }, [accounts, enrollments, period, history]);
+
   // Dropdown choices: every school year, and each semester inside it.
   const periodOptions = useMemo(() => {
     const years = [];
@@ -112,10 +150,16 @@ export default function Reports() {
     return kind === 'sy' || t.semester === Number(sem);
   };
 
+  // Only attempts by students still listed (archived accounts are left out).
+  const studentIds = useMemo(() => new Set(students.map((s) => s.id)), [students]);
+  // A student picked in the quiz filter who isn't in the chosen school year
+  // falls back to "All students".
+  const quizFilter = pickedQuizStudent !== 'all' && !studentIds.has(pickedQuizStudent) ? 'all' : pickedQuizStudent;
+
   const periodQuizzes = useMemo(
-    () => quizResults.filter((q) => inPeriod(q.completed_at)),
+    () => quizResults.filter((q) => studentIds.has(q.student_id) && inPeriod(q.completed_at)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [quizResults, period, history]
+    [quizResults, studentIds, period, history]
   );
 
   const lessonsCompletedMap = useMemo(() => {

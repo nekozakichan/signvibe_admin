@@ -16,6 +16,7 @@ import StudentProgress from './pages/teacher/StudentProgress';
 import ClassOverview from './pages/teacher/ClassOverview';
 import ManageModules from './pages/teacher/ManageModules';
 import Reports from './pages/teacher/Reports';
+import StudentRecords from './pages/teacher/StudentRecords';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 
 export default function App() {
@@ -100,6 +101,15 @@ export default function App() {
             element={
               <ProtectedRoute allowedRole="teacher">
                 <Reports />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/teacher/records"
+            element={
+              <ProtectedRoute allowedRole="teacher">
+                <StudentRecords />
               </ProtectedRoute>
             }
           />

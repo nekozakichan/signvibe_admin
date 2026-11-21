@@ -6,3 +6,4 @@ serviceAccount/
 *.json.key
 *.local
 **/firebase-adminsdk*.json
+scripts/backups/

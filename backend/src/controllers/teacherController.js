@@ -7,6 +7,7 @@ import {
 } from '../services/firebaseService.js';
 import { sendTeacherCredentials, sendAccountArchivedEmail } from '../services/mailerService.js';
 import { encryptPassword, decryptPassword } from '../services/credentialVault.js';
+import { normalizeEmail, isValidEmail, INVALID_EMAIL_MESSAGE } from '../utils/email.js';
 
 // Archive reasons are emailed and shown in the Archived tab — keep them short.
 const MAX_ARCHIVE_REASON = 500;
@@ -50,13 +51,17 @@ function buildFullName(first_name, middle_name, last_name) {
 
 // ─── POST /api/teachers ───────────────────────────────────────────────────────
 export const createTeacher = async (req, res) => {
-  const { first_name, middle_name, last_name, email, employee_no } = req.body;
+  const { first_name, middle_name, last_name, employee_no } = req.body;
+  const email = normalizeEmail(req.body.email);
 
   if (!first_name || !last_name || !email || !employee_no) {
     return res.status(400).json({
       success: false,
       message: 'first_name, last_name, email, and employee_no are required.',
     });
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ success: false, message: INVALID_EMAIL_MESSAGE });
   }
 
   const full_name = buildFullName(first_name, middle_name, last_name);
@@ -96,6 +101,9 @@ export const createTeacher = async (req, res) => {
     if (message.includes('email-already-exists')) {
       return res.status(409).json({ success: false, message: 'This email is already registered.' });
     }
+    if (String(err.code || message).includes('invalid-email')) {
+      return res.status(400).json({ success: false, message: INVALID_EMAIL_MESSAGE });
+    }
     return res.status(500).json({ success: false, message: 'Failed to create teacher account: ' + message });
   }
 };
@@ -108,23 +116,6 @@ export const getTeachers = async (req, res) => {
       { field: 'role', op: '==', value: 'teacher' },
     ]);
     return res.json({ success: true, data: teachers });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// ─── PATCH /api/teachers/:uid/status ─────────────────────────────────────────
-export const toggleTeacherStatus = async (req, res) => {
-  const { uid } = req.params;
-  const { status } = req.body;
-  if (!['active', 'deactivated'].includes(status)) {
-    return res.status(400).json({ success: false, message: 'Status must be active or deactivated.' });
-  }
-  try {
-    const { setUserDisabled } = await import('../services/firebaseService.js');
-    await setUserDisabled(uid, status === 'deactivated');
-    await setFirestoreDocument('users', uid, { status });
-    return res.json({ success: true, message: 'Teacher status updated.' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }

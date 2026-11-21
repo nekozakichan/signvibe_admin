@@ -229,3 +229,56 @@ export const sendAccountArchivedEmail = async ({ full_name, email, reason, role 
       </div>`,
   });
 };
+
+// ─── Congratulations: promoted or graduated ───────────────────────────────────
+// kind: 'promoted' → finished fromGrade, moving up to toGrade
+//       'graduated' → finished Grade 6
+// schoolYear is the year just finished; nextSchoolYear is optional.
+export const sendCongratulationsEmail = async ({
+  full_name, email, kind, fromGrade, toGrade, schoolYear, nextSchoolYear,
+}) => {
+  const graduated = kind === 'graduated';
+  const safeName = escapeHtml(full_name);
+  const sy = schoolYear ? ` in S.Y. ${escapeHtml(schoolYear)}` : '';
+  const next = nextSchoolYear ? ` for S.Y. ${escapeHtml(nextSchoolYear)}` : ' next school year';
+
+  const headline = graduated ? 'You graduated! 🎓' : `You're moving up to Grade ${toGrade}! 🎉`;
+  const message = graduated
+    ? `You have finished <strong>Grade 6</strong>${sy} and completed elementary. We are very proud of you!`
+    : `You have finished <strong>Grade ${fromGrade}</strong>${sy} and you are promoted to <strong>Grade ${toGrade}</strong>${next}. Great job!`;
+  const closing = graduated
+    ? 'Thank you for learning Filipino Sign Language with SignVibe. Keep signing and keep shining!'
+    : 'Keep practicing your signs in SignVibe — new lessons are waiting for you.';
+  const plain = graduated
+    ? `You have finished Grade 6${schoolYear ? ` in S.Y. ${schoolYear}` : ''} and completed elementary. We are very proud of you!`
+    : `You have finished Grade ${fromGrade}${schoolYear ? ` in S.Y. ${schoolYear}` : ''} and you are promoted to Grade ${toGrade}${nextSchoolYear ? ` for S.Y. ${nextSchoolYear}` : ' next school year'}. Great job!`;
+
+  await getTransporter().sendMail({
+    from: `"SignVibe" <${process.env.MAIL_USER}>`,
+    to: email,
+    subject: graduated ? '🎓 Congratulations on your graduation!' : `🎉 Congratulations! You are now Grade ${toGrade}`,
+    text:
+      `Congratulations, ${full_name}!\n\n${plain}\n\n` +
+      `${graduated ? 'Thank you for learning Filipino Sign Language with SignVibe. Keep signing and keep shining!' : 'Keep practicing your signs in SignVibe — new lessons are waiting for you.'}\n\n` +
+      `This email was sent by SignVibe. Do not reply to this email.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:28px;border:1px solid #e0e0e0;border-radius:14px;">
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="display:inline-block;background:#008080;padding:12px 24px;border-radius:8px;">
+            <h2 style="color:#fff;margin:0;font-size:20px;">📚 SignVibe</h2>
+          </div>
+        </div>
+        <div style="text-align:center;background:${graduated ? '#f3e5f5' : '#e8f5e9'};border-radius:12px;padding:24px 16px;margin-bottom:24px;">
+          <div style="font-size:48px;line-height:1;">${graduated ? '🎓' : '🌟'}</div>
+          <h2 style="color:${graduated ? '#6A1B9A' : '#2E7D32'};margin:12px 0 4px;font-size:22px;">${headline}</h2>
+          <p style="color:#555;margin:0;font-size:14px;">Congratulations, <strong>${safeName}</strong>!</p>
+        </div>
+        <p style="color:#444;font-size:15px;line-height:1.6;">${message}</p>
+        <p style="color:#444;font-size:15px;line-height:1.6;">${closing}</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
+        <p style="color:#aaa;font-size:11px;text-align:center;margin:0;">
+          This email was sent by SignVibe. Do not reply to this email.
+        </p>
+      </div>`,
+  });
+};

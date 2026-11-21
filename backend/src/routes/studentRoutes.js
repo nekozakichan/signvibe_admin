@@ -7,6 +7,7 @@ import {
   archiveStudent,
   restoreStudent,
   sendStudentCredentialsEmail,
+  updateStudent,
 } from '../controllers/studentController.js';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.use(requireRole('teacher', 'admin'));
 
 router.get('/', getStudents);
 router.post('/', createStudent);
+router.patch('/:uid', updateStudent);
 router.patch('/:uid/status', toggleStudentStatus);
 router.patch('/:uid/archive', archiveStudent);
 router.patch('/:uid/restore', restoreStudent);

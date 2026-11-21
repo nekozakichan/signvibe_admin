@@ -7,6 +7,14 @@ import {
 } from '../services/firebaseService.js';
 import { sendStudentCredentials, sendAccountArchivedEmail } from '../services/mailerService.js';
 import { encryptPassword, decryptPassword } from '../services/credentialVault.js';
+import { auth, db } from '../config/firebase.js';
+import { normalizeEmail, isValidEmail, INVALID_EMAIL_MESSAGE } from '../utils/email.js';
+import {
+  enrollmentData,
+  enrollmentId,
+  getActiveSchoolYear,
+  getSchoolYear,
+} from '../services/enrollmentService.js';
 
 // Archive reasons are emailed and shown in the Archived tab — keep them short.
 const MAX_ARCHIVE_REASON = 500;
@@ -63,13 +71,17 @@ function buildFullName(first_name, middle_name, last_name) {
 
 // ─── POST /api/students — Create account only, do NOT auto-email ──────────────
 export const createStudent = async (req, res) => {
-  const { first_name, middle_name, last_name, email, grade_level, parent_contact } = req.body;
+  const { first_name, middle_name, last_name, grade_level, parent_contact, school_year_id } = req.body;
+  const email = normalizeEmail(req.body.email);
 
   if (!first_name || !last_name || !email || !grade_level || !parent_contact) {
     return res.status(400).json({
       success: false,
       message: 'first_name, last_name, email, grade_level, and parent_contact are required.',
     });
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ success: false, message: INVALID_EMAIL_MESSAGE });
   }
 
   const parentContact = normalizePhMobile(parent_contact);
@@ -91,7 +103,7 @@ export const createStudent = async (req, res) => {
   try {
     const uid = await createAuthUser(email, password, full_name);
 
-    await setFirestoreDocument('users', uid, {
+    const userDoc = {
       first_name,
       middle_name: middle_name || '',
       last_name,
@@ -104,7 +116,16 @@ export const createStudent = async (req, res) => {
       lessons_completed: 0,
       total_points: 0,
       created_at: new Date().toISOString(),
-    });
+    };
+    await setFirestoreDocument('users', uid, userDoc);
+
+    // Enroll the new student into the chosen school year (the active one if
+    // none was given). No school years set up yet → account only.
+    const year = school_year_id ? await getSchoolYear(school_year_id) : await getActiveSchoolYear();
+    if (year) {
+      await db.collection('enrollments').doc(enrollmentId(year.id, uid))
+        .set(enrollmentData({ uid, student: userDoc, year, grade, by: req.user?.uid }));
+    }
 
     // The password itself never touches the users document — it goes to the
     // vault, encrypted, so "Send Credentials" can still reach it later.
@@ -118,15 +139,98 @@ export const createStudent = async (req, res) => {
     // through "Send Credentials", straight from the vault to their Gmail.
     return res.status(201).json({
       success: true,
-      message: 'Student account created successfully.',
+      message: year
+        ? `Student account created and enrolled in S.Y. ${year.schoolYear}.`
+        : 'Student account created successfully.',
       uid,
+      schoolYear: year ? year.schoolYear : null,
     });
   } catch (err) {
     const message = err.message || 'Unknown error';
     if (message.includes('email-already-exists')) {
       return res.status(409).json({ success: false, message: 'This email is already registered.' });
     }
+    if (String(err.code || message).includes('invalid-email')) {
+      return res.status(400).json({ success: false, message: INVALID_EMAIL_MESSAGE });
+    }
     return res.status(500).json({ success: false, message: 'Failed to create student: ' + message });
+  }
+};
+
+// ─── PATCH /api/students/:uid — Edit Student Information ─────────────────────
+// Name, email (their login), grade level and parent's contact number.
+// Changing the email also changes the Firebase login. A grade change applies
+// to the ACTIVE school year and is written to that year's enrollment too.
+export const updateStudent = async (req, res) => {
+  const { uid } = req.params;
+  const body = req.body || {};
+  const first_name = String(body.first_name || '').trim();
+  const middle_name = String(body.middle_name || '').trim();
+  const last_name = String(body.last_name || '').trim();
+  const email = normalizeEmail(body.email);
+  const grade = parseInt(body.grade_level, 10);
+
+  if (!first_name || !last_name || !email || !body.grade_level || !body.parent_contact) {
+    return res.status(400).json({ success: false, message: 'First name, last name, email, grade level and parent\'s contact are required.' });
+  }
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ success: false, message: INVALID_EMAIL_MESSAGE });
+  }
+  if (Number.isNaN(grade) || grade < 1 || grade > 6) {
+    return res.status(400).json({ success: false, message: 'Grade level must be between 1 and 6.' });
+  }
+  const parentContact = normalizePhMobile(String(body.parent_contact));
+  if (!parentContact) {
+    return res.status(400).json({ success: false, message: "Parent's contact number must be a valid PH mobile number, e.g. 09171234567." });
+  }
+
+  try {
+    const ref = db.collection('users').doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data().role !== 'student') {
+      return res.status(404).json({ success: false, message: 'Student not found.' });
+    }
+    const before = snap.data();
+    const full_name = buildFullName(first_name, middle_name, last_name);
+
+    // Login first: if the new email is taken, nothing else changes.
+    const authUpdate = {};
+    if (email !== String(before.email || '').toLowerCase()) authUpdate.email = email;
+    if (full_name !== before.full_name) authUpdate.displayName = full_name;
+    if (Object.keys(authUpdate).length) {
+      try {
+        await auth.updateUser(uid, authUpdate);
+      } catch (err) {
+        if (String(err.code || err.message).includes('email-already-exists')) {
+          return res.status(409).json({ success: false, message: 'That email is already used by another account.' });
+        }
+        throw err;
+      }
+    }
+
+    await ref.set({
+      first_name, middle_name, last_name, full_name, email,
+      grade_level: String(grade),
+      parent_contact: parentContact,
+      updated_at: new Date().toISOString(),
+    }, { merge: true });
+
+    // Keep the active year's enrollment (and its name for record search) in step.
+    const year = await getActiveSchoolYear();
+    if (year) {
+      const eRef = db.collection('enrollments').doc(enrollmentId(year.id, uid));
+      if ((await eRef.get()).exists) {
+        await eRef.set({
+          grade_level: String(grade), student_name: full_name, student_email: email,
+          updated_at: new Date().toISOString(), updated_by: req.user?.uid || null,
+        }, { merge: true });
+      }
+    }
+
+    return res.json({ success: true, message: `${full_name}'s information was updated.` });
+  } catch (err) {
+    console.error('updateStudent failed:', err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 

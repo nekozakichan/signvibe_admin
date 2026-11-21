@@ -6,6 +6,7 @@ import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
 import AnimatedNumber from '../../components/AnimatedNumber';
 import { StatGridSkeleton, CardSkeleton } from '../../components/Skeletons';
+import { loadCurrentStudents } from '../../config/enrollments';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale,
@@ -18,6 +19,7 @@ export default function TeacherDashboard() {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [schoolYear, setSchoolYear] = useState(null);
   const [lessonsPublished, setLessonsPublished] = useState(0);
   const [avgCompletion, setAvgCompletion] = useState(0);
   const [avgPoints, setAvgPoints] = useState(0);
@@ -26,11 +28,10 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Students (active only)
-        const studentSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
-        const students = studentSnap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((s) => s.status !== 'archived');
+        // Students in the current school year (not archived, not transferred
+        // or dropped); upcoming-year-only students are left out.
+        const { year, students } = await loadCurrentStudents();
+        setSchoolYear(year);
 
         // Lessons
         const lessonsSnap = await getDocs(collection(db, 'lessons'));
@@ -101,7 +102,7 @@ export default function TeacherDashboard() {
   }, []);
 
   const stats = [
-    { label: 'Total Students', value: totalStudents, icon: 'bi-people-fill', color: '#00838A' },
+    { label: schoolYear ? `Students · S.Y. ${schoolYear.schoolYear}` : 'Total Students', value: totalStudents, icon: 'bi-people-fill', color: '#00838A' },
     { label: 'Lessons Published', value: lessonsPublished, icon: 'bi-collection-fill', color: '#1565C0' },
     { label: 'Avg. Completion', value: avgCompletion, suffix: '%', icon: 'bi-graph-up-arrow', color: '#2E7D32' },
     { label: 'Avg. Stars / Student', value: avgPoints, icon: 'bi-star-fill', color: '#6A1B9A' },

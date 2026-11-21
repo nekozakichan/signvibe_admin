@@ -41,6 +41,15 @@ export const startNewSchoolYear = async (req, res) => {
         message: `The school is already in S.Y. ${schoolYearFor(currentStart)}. The new school year must come after it.`,
       });
     }
+    // Never run the same year twice, even if the admin later set an older
+    // school year active again (that would move students up a second time).
+    const alreadyStarted = Array.isArray(current?.rolled_over_to) ? current.rolled_over_to.map(Number) : [];
+    if (alreadyStarted.includes(startYear)) {
+      return res.status(409).json({
+        success: false,
+        message: `S.Y. ${schoolYearFor(startYear)} was already started with this step, so students were already moved up for it.`,
+      });
+    }
     const endingYear = currentStart ? schoolYearFor(currentStart) : 'previous school year';
 
     // Every non-archived student must have a decision, and only valid ones.
@@ -141,8 +150,30 @@ export const startNewSchoolYear = async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
       updated_by: req.user.uid,
       last_rollover: { from: endingYear, at: now, by: req.user.uid },
+      rolled_over_to: FieldValue.arrayUnion(startYear),
       history,
     }, { merge: true });
+
+    // Make sure the new year is in the School Year Management list, with a
+    // 1st Semester (it may already exist if the admin added it ahead of time).
+    const firstSem = { semester: 1, label: '1st Semester', start_date: null, end_date: null };
+    const existing = await db.collection('school_years').where('start_year', '==', startYear).get();
+    if (existing.empty) {
+      await db.collection('school_years').add({
+        school_year: schoolYearFor(startYear), start_year: startYear,
+        start_date: null, end_date: null, semesters: [firstSem],
+        created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp(), updated_by: req.user.uid,
+      });
+    } else {
+      const yearDoc = existing.docs[0];
+      const sems = Array.isArray(yearDoc.data().semesters) ? yearDoc.data().semesters : [];
+      if (!sems.some((x) => Number(x.semester) === 1)) {
+        await yearDoc.ref.set({
+          semesters: [firstSem, ...sems].sort((a, b) => Number(a.semester) - Number(b.semester)),
+          updated_at: FieldValue.serverTimestamp(), updated_by: req.user.uid,
+        }, { merge: true });
+      }
+    }
 
     return res.json({
       success: true,

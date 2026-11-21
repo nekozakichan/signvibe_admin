@@ -219,6 +219,42 @@ function QuizCoverage({ total }) {
 // Max icon upload size, to keep Storage usage sane for small square icons
 const MAX_ICON_SIZE_MB = 2;
 
+// Lesson and quiz sign videos. storage.rules enforces the same 50 MB limit and
+// video-only type, so a file that slips past the picker is still refused.
+const MAX_VIDEO_SIZE_MB = 50;
+const VIDEO_TYPE_BY_EXT = {
+  mp4: 'video/mp4', m4v: 'video/x-m4v', mov: 'video/quicktime',
+  webm: 'video/webm', mkv: 'video/x-matroska', '3gp': 'video/3gpp',
+};
+
+// Checks a picked file. Returns { contentType } when it can be uploaded, or
+// { error } with the message to show. The picker's accept="video/*" is only a
+// hint — "All files" in the dialog gets around it — so the type is checked here.
+function checkVideoFile(file) {
+  if (!file) return { error: 'Please choose a video file.' };
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const contentType = file.type?.startsWith('video/') ? file.type : VIDEO_TYPE_BY_EXT[ext];
+  if (!contentType) {
+    return { error: `"${file.name}" is not a video. Choose an MP4, MOV, WEBM or MKV file.` };
+  }
+  if (file.size > MAX_VIDEO_SIZE_MB * 1024 * 1024) {
+    const mb = (file.size / (1024 * 1024)).toFixed(1);
+    return {
+      error: `This video is ${mb} MB. Videos must be ${MAX_VIDEO_SIZE_MB} MB or smaller — trim or compress it, then choose it again.`,
+    };
+  }
+  return { contentType };
+}
+
+// Friendly text for a failed Storage upload.
+function uploadErrorMessage(err) {
+  if (err?.code === 'storage/unauthorized') {
+    return `The upload was refused. Videos must be under ${MAX_VIDEO_SIZE_MB} MB and in a video format.`;
+  }
+  if (err?.code === 'storage/canceled') return 'The upload was cancelled.';
+  return 'The video could not be uploaded. Check your connection and try again.';
+}
+
 // Modules that use the tracing quiz (auto-built), so they get NO authored quiz.
 const TRACING_MODULE_IDS = ['alphabet', 'numbers'];
 const moduleIdOf = (name) => (name || '').toLowerCase().replace(/\s/g, '_');
@@ -423,12 +459,14 @@ function QuizQuestionForm({ moduleId, moduleLessons, initial, nextOrder, onCance
         video_url = reuseUrl;
         owns_video = false;   // belongs to a lesson; don't delete it with the question
       } else if (videoFile) {
+        const check = checkVideoFile(videoFile);
+        if (check.error) { setError(check.error); setSaving(false); return; }
         const storageRef = ref(storage, `quiz-videos/${moduleId}/${Date.now()}_${videoFile.name}`);
-        const task = uploadBytesResumable(storageRef, videoFile);
+        const task = uploadBytesResumable(storageRef, videoFile, { contentType: check.contentType });
         await new Promise((resolve, reject) => {
           task.on('state_changed',
             (snap) => setProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-            reject,
+            (err) => reject(new Error(uploadErrorMessage(err))),
             async () => { video_url = await getDownloadURL(task.snapshot.ref); resolve(); }
           );
         });
@@ -498,7 +536,20 @@ function QuizQuestionForm({ moduleId, moduleLessons, initial, nextOrder, onCance
       {videoMode === 'upload' ? (
         <>
           <input type="file" accept="video/*" className="form-control rounded-3 mb-1"
-            onChange={(e) => setVideoFile(e.target.files[0])} />
+            onChange={(e) => {
+              const file = e.target.files[0];
+              if (!file) { setVideoFile(null); return; }
+              const check = checkVideoFile(file);
+              if (check.error) {
+                setError(check.error);
+                setVideoFile(null);
+                e.target.value = '';   // clear the rejected file from the picker
+                return;
+              }
+              setError('');
+              setVideoFile(file);
+            }} />
+          <small className="d-block mb-1" style={{ color: '#666' }}>MP4, MOV, WEBM or MKV, up to {MAX_VIDEO_SIZE_MB} MB.</small>
           {initial?.video_url && !videoFile && (
             <small className="text-muted">A video is already set. Choosing a new file replaces it.</small>
           )}
@@ -758,6 +809,8 @@ export default function ManageModules() {
   const [quizModule, setQuizModule] = useState(null);   // module whose quiz is being managed
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [lessonVideoWarning, setLessonVideoWarning] = useState('');   // bad file picked
+  const [lessonError, setLessonError] = useState('');                 // upload/save failed
   const [filter, setFilter] = useState('All');
   const [dayFilter, setDayFilter] = useState('all'); // 'all' | 1–9 | 'none'
   const [form, setForm] = useState({
@@ -889,9 +942,34 @@ export default function ManageModules() {
   const nextOrder = modules.length > 0 ? Math.max(...modules.map((m) => m.order || 0)) + 1 : 1;
 
   // ── Lesson upload ──
+  const openLessonModal = () => {
+    setLessonVideoWarning('');
+    setLessonError('');
+    setShowLessonModal(true);
+  };
+
+  const handleLessonVideoChange = (e) => {
+    const file = e.target.files[0];
+    setLessonError('');
+    if (!file) { setForm((f) => ({ ...f, video: null })); setLessonVideoWarning(''); return; }
+    const check = checkVideoFile(file);
+    if (check.error) {
+      setLessonVideoWarning(check.error);
+      setForm((f) => ({ ...f, video: null }));
+      e.target.value = '';   // clear the rejected file so it can't be submitted
+      return;
+    }
+    setLessonVideoWarning('');
+    setForm((f) => ({ ...f, video: file }));
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!form.video || !form.module) return;
+    if (!form.module) return;
+    // Checked again here, not only on pick, in case the file got past the picker.
+    const check = checkVideoFile(form.video);
+    if (check.error) { setLessonVideoWarning(check.error); return; }
+    setLessonError('');
     setUploading(true);
 
     try {
@@ -899,7 +977,7 @@ export default function ManageModules() {
         storage,
         `lessons/${form.module}/${Date.now()}_${form.video.name}`
       );
-      const uploadTask = uploadBytesResumable(storageRef, form.video);
+      const uploadTask = uploadBytesResumable(storageRef, form.video, { contentType: check.contentType });
 
       uploadTask.on(
         'state_changed',
@@ -910,9 +988,12 @@ export default function ManageModules() {
         },
         (err) => {
           console.error(err);
+          setLessonError(uploadErrorMessage(err));
+          setUploadProgress(0);
           setUploading(false);
         },
         async () => {
+          try {
           const videoUrl = await getDownloadURL(uploadTask.snapshot.ref);
           await addDoc(collection(db, 'lessons'), {
             module_id: form.module.toLowerCase().replace(/\s/g, '_'),
@@ -937,10 +1018,17 @@ export default function ManageModules() {
           setUploadProgress(0);
           setUploading(false);
           fetchLessons();
+          } catch (err) {
+            console.error(err);
+            setLessonError('The video uploaded, but the lesson could not be saved. Please try again.');
+            setUploadProgress(0);
+            setUploading(false);
+          }
         }
       );
     } catch (err) {
       console.error(err);
+      setLessonError(uploadErrorMessage(err));
       setUploading(false);
     }
   };
@@ -1066,7 +1154,7 @@ export default function ManageModules() {
               <button
                 className="btn text-white rounded-3"
                 style={{ backgroundColor: '#00838A' }}
-                onClick={() => setShowLessonModal(true)}
+                onClick={openLessonModal}
                 disabled={activeModules.length === 0}
                 title={activeModules.length === 0 ? 'Add a module first' : ''}
               >
@@ -1224,6 +1312,11 @@ export default function ManageModules() {
               </div>
               <form onSubmit={handleUpload}>
                 <div className="modal-body">
+                  {lessonError && (
+                    <div className="alert alert-danger py-2 small rounded-3 mb-3">
+                      <i className="bi bi-exclamation-circle me-1"></i>{lessonError}
+                    </div>
+                  )}
                   <div className="mb-3">
                     <label className="form-label small fw-medium">Module</label>
                     <select
@@ -1295,15 +1388,20 @@ export default function ManageModules() {
                     <input
                       type="file"
                       accept="video/*"
-                      className="form-control rounded-3"
-                      onChange={(e) =>
-                        setForm({ ...form, video: e.target.files[0] })
-                      }
+                      className={`form-control rounded-3 ${lessonVideoWarning ? 'is-invalid' : ''}`}
+                      onChange={handleLessonVideoChange}
+                      disabled={uploading}
                       required
                     />
-                    <small style={{ color: '#666' }}>
-                      Upload your recorded FSL demonstration video
-                    </small>
+                    {lessonVideoWarning ? (
+                      <div className="alert alert-warning py-2 px-3 small rounded-3 mt-2 mb-0" role="alert">
+                        <i className="bi bi-exclamation-triangle-fill me-1"></i>{lessonVideoWarning}
+                      </div>
+                    ) : (
+                      <small style={{ color: '#666' }}>
+                        Upload your recorded FSL demonstration video — MP4, MOV, WEBM or MKV, up to {MAX_VIDEO_SIZE_MB} MB.
+                      </small>
+                    )}
                   </div>
                   {uploading && (
                     <div className="mt-2">

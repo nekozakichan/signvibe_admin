@@ -49,6 +49,7 @@ export default function Sidebar() {
   const teacherLinks = [
     { to: '/teacher/dashboard', icon: 'bi-speedometer2', label: 'Dashboard' },
     { to: '/teacher/students', icon: 'bi-people-fill', label: 'Students List' },
+    { to: '/teacher/records', icon: 'bi-journal-text', label: 'Student Records' },
     { to: '/teacher/class-overview', icon: 'bi-bar-chart-fill', label: 'Class Overview' },
     { to: '/teacher/modules', icon: 'bi-collection-fill', label: 'Manage Modules' },
     { to: '/teacher/reports', icon: 'bi-file-earmark-bar-graph-fill', label: 'Reports' },
