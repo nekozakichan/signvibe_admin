@@ -11,6 +11,8 @@ import { normalizeEmail, isValidEmail, INVALID_EMAIL_MESSAGE } from '../utils/em
 
 // Archive reasons are emailed and shown in the Archived tab — keep them short.
 const MAX_ARCHIVE_REASON = 500;
+// …and more than one word, so the teacher understands why (matches ManageTeachers.jsx).
+const MIN_ARCHIVE_REASON = 20;
 
 /**
  * Where a generated password lives now: encrypted, in user_credentials/{uid},
@@ -129,6 +131,9 @@ export const archiveTeacher = async (req, res) => {
   const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
   if (!reason) {
     return res.status(400).json({ success: false, message: 'Please give a reason for archiving this account.' });
+  }
+  if (reason.length < MIN_ARCHIVE_REASON) {
+    return res.status(400).json({ success: false, message: 'Please add a few more details to the reason (at least a short sentence).' });
   }
   if (reason.length > MAX_ARCHIVE_REASON) {
     return res.status(400).json({ success: false, message: `Keep the reason under ${MAX_ARCHIVE_REASON} characters.` });

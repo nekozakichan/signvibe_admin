@@ -28,16 +28,12 @@ function normalizePhMobile(raw) {
   return null;
 }
 
-// 09171234567 -> 0917 123 4567, for reading at a glance in the table.
-function formatPhMobile(num) {
-  return /^09\d{9}$/.test(num || '') ? `${num.slice(0, 4)} ${num.slice(4, 7)} ${num.slice(7)}` : num;
-}
 
 // ─── Add Student Modal ────────────────────────────────────────────────────────
 function AddStudentModal({ schoolYear, onClose, onSuccess }) {
   const [form, setForm] = useState({
     first_name: '', middle_name: '', last_name: '',
-    email: '', grade_level: '', parent_contact: '',
+    email: '', grade_level: '', parent_name: '', parent_contact: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -45,9 +41,9 @@ function AddStudentModal({ schoolYear, onClose, onSuccess }) {
   const handleChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
 
   const handleSubmit = async () => {
-    const { first_name, last_name, email, grade_level, parent_contact } = form;
-    if (!first_name.trim() || !last_name.trim() || !email.trim() || !grade_level || !parent_contact.trim()) {
-      setError("First name, last name, email, grade, and parent's contact number are required.");
+    const { first_name, last_name, email, grade_level, parent_name, parent_contact } = form;
+    if (!first_name.trim() || !last_name.trim() || !email.trim() || !grade_level || !parent_name.trim() || !parent_contact.trim()) {
+      setError("First name, last name, email, grade, and the parent's name and contact number are required.");
       return;
     }
     if (!isValidEmail(email)) {
@@ -66,7 +62,7 @@ function AddStudentModal({ schoolYear, onClose, onSuccess }) {
       const res = await apiFetch(`/api/students`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, email: cleanEmail, parent_contact: parentContact, school_year_id: schoolYear?.id }),
+        body: JSON.stringify({ ...form, email: cleanEmail, parent_name: parent_name.trim(), parent_contact: parentContact, school_year_id: schoolYear?.id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create student.');
@@ -120,7 +116,7 @@ function AddStudentModal({ schoolYear, onClose, onSuccess }) {
         <div className="mb-3">
           <label className="form-label fw-medium small">
             Email Address
-            <span className="ms-1" style={{ fontSize: 11, color: '#777' }}>(This will be the student's username)</span>
+            <span className="ms-1" style={{ fontSize: 11, color: '#777' }}>(The student logs in with this email)</span>
           </label>
           <input name="email" type="email" className="form-control rounded-3" placeholder="student@gmail.com" value={form.email} onChange={handleChange} />
         </div>
@@ -131,6 +127,22 @@ function AddStudentModal({ schoolYear, onClose, onSuccess }) {
             <option value="">-- Select Grade --</option>
             {[1,2,3,4,5,6].map((g) => <option key={g} value={g}>Grade {g}</option>)}
           </select>
+        </div>
+
+        <div className="mb-3">
+          <label className="form-label fw-medium small">Parent's / Guardian's Name</label>
+          <div className="input-group">
+            <span className="input-group-text bg-white rounded-start-3"><i className="bi bi-person-hearts" style={{ color: '#008080' }}></i></span>
+            <input
+              name="parent_name"
+              type="text"
+              maxLength={100}
+              className="form-control rounded-end-3"
+              placeholder="e.g. Maria Dela Cruz"
+              value={form.parent_name}
+              onChange={handleChange}
+            />
+          </div>
         </div>
 
         <div className="mb-3">
@@ -357,6 +369,7 @@ function EditStudentModal({ student, activeYear, onClose, onSaved }) {
     last_name: student.last_name || '',
     email: student.email || '',
     grade_level: String(student.grade_level || ''),
+    parent_name: student.parent_name || '',
     parent_contact: student.parent_contact || '',
   });
   const [saving, setSaving] = useState(false);
@@ -376,7 +389,7 @@ function EditStudentModal({ student, activeYear, onClose, onSaved }) {
     try {
       const res = await apiFetch(`/api/students/${student.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...form, parent_contact: parentContact }),
+        body: JSON.stringify({ ...form, parent_name: form.parent_name.trim(), parent_contact: parentContact }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Could not save.');
@@ -405,7 +418,7 @@ function EditStudentModal({ student, activeYear, onClose, onSaved }) {
           ))}
         </div>
         <div className="mb-3">
-          <label className="form-label fw-medium small" htmlFor="sv-edit-email">Email Address <span style={{ color: '#777', fontSize: 11 }}>(student's username)</span></label>
+          <label className="form-label fw-medium small" htmlFor="sv-edit-email">Email Address <span style={{ color: '#777', fontSize: 11 }}>(used to log in)</span></label>
           <input id="sv-edit-email" name="email" type="email" className="form-control rounded-3" value={form.email} onChange={change} disabled={saving} />
           {emailChanged && (
             <div className="small mt-1" style={{ color: '#B26A00' }}>
@@ -413,14 +426,21 @@ function EditStudentModal({ student, activeYear, onClose, onSaved }) {
             </div>
           )}
         </div>
-        <div className="row g-2">
-          <div className="col-md-5">
-            <label className="form-label fw-medium small" htmlFor="sv-edit-grade">Grade Level{activeYear && <span style={{ color: '#777', fontSize: 11 }}> (S.Y. {activeYear.schoolYear})</span>}</label>
-            <select id="sv-edit-grade" name="grade_level" className="form-select rounded-3" value={form.grade_level} onChange={change} disabled={saving}>
+        <div className="mb-3">
+          <label className="form-label fw-medium small" htmlFor="sv-edit-grade">Grade Level{activeYear && <span style={{ color: '#777', fontSize: 11 }}> (S.Y. {activeYear.schoolYear})</span>}</label>
+            <select id="sv-edit-grade" name="grade_level" className="form-select rounded-3" style={{ maxWidth: 220 }} value={form.grade_level} onChange={change} disabled={saving}>
               {[1, 2, 3, 4, 5, 6].map((g) => <option key={g} value={g}>Grade {g}</option>)}
             </select>
-          </div>
+        </div>
+        <div className="row g-2">
           <div className="col-md-7">
+            <label className="form-label fw-medium small" htmlFor="sv-edit-parent-name">Parent's / Guardian's Name</label>
+            <input id="sv-edit-parent-name" name="parent_name" type="text" maxLength={100} className="form-control rounded-3" value={form.parent_name} onChange={change} disabled={saving} placeholder="e.g. Maria Dela Cruz" />
+            {!student.parent_name && !form.parent_name.trim() && (
+              <small style={{ color: '#9a5b05', fontSize: 11 }}><i className="bi bi-info-circle me-1"></i>Not set yet — add it so it shows on the student's details.</small>
+            )}
+          </div>
+          <div className="col-md-5">
             <label className="form-label fw-medium small" htmlFor="sv-edit-parent">Parent's Contact Number</label>
             <input id="sv-edit-parent" name="parent_contact" type="tel" className="form-control rounded-3" value={form.parent_contact} onChange={change} disabled={saving} placeholder="e.g. 09171234567" />
           </div>
@@ -860,7 +880,7 @@ export default function StudentsList() {
     setSendLoadingId(student.id);
     try {
       await doSendCredentials(student.id);
-      setToast({ type: 'success', message: 'Credentials sent!', sub: `Username & password emailed to ${student.email}` });
+      setToast({ type: 'success', message: 'Credentials sent!', sub: `Login email & password sent to ${student.email}` });
     } catch (err) {
       setToast({ type: 'error', message: 'Send failed', sub: err.message });
     } finally {
@@ -958,7 +978,7 @@ export default function StudentsList() {
   };
 
   const yearLabel = (y) => `S.Y. ${y.schoolYear}${y.isActive ? ' (Active)' : activeYear && y.startYear < activeYear.startYear ? ' (Previous)' : activeYear ? ' (Upcoming)' : ''}`;
-  const colCount = isPastYear ? 7 : 9;
+  const colCount = isPastYear ? 6 : 8;
 
   return (
     <div className="d-flex">
@@ -1083,9 +1103,8 @@ export default function StudentsList() {
                       <tr>
                         <th className="ps-4 py-3">#</th>
                         <th>Student Name</th>
-                        <th>Email / Username</th>
+                        <th>Email</th>
                         <th>{isPastYear ? `Grade (S.Y. ${selectedYear.schoolYear})` : 'Grade Level'}</th>
-                        <th>Parent's Contact</th>
                         {!legacyMode && view === 'enrolled' && <th>Enrollment Status</th>}
                         {!isPastYear && <th>Lessons</th>}
                         {!isPastYear && <th>Stars</th>}
@@ -1137,15 +1156,6 @@ export default function StudentsList() {
                                 Grade {s.grade_level}
                               </span>
                             </td>
-                            <td className="small text-nowrap">
-                              {s.parent_contact ? (
-                                <a href={`tel:${s.parent_contact}`} className="text-decoration-none" style={{ color: '#444' }} title="Call parent">
-                                  <i className="bi bi-telephone-fill me-1" style={{ color: '#008080' }}></i>{formatPhMobile(s.parent_contact)}
-                                </a>
-                              ) : (
-                                <span style={{ color: '#999' }}>—</span>
-                              )}
-                            </td>
                             {!legacyMode && view === 'enrolled' && (
                               <td>
                                 <div className="d-flex align-items-center gap-1">
@@ -1171,13 +1181,13 @@ export default function StudentsList() {
                             <td className="pe-4">
                               <div className="d-flex justify-content-end gap-1 flex-wrap">
 
-                                {/* View Progress */}
+                                {/* View details & progress (parent's name and contact live there) */}
                                 {!s.missingAccount && (
                                   <button
                                     className="btn btn-sm rounded-3"
                                     style={{ backgroundColor: '#00838A18', color: '#00838A' }}
                                     onClick={() => navigate(`/teacher/students/${s.id}/progress`)}
-                                    title="View Progress"
+                                    title="View details & progress"
                                   >
                                     <i className="bi bi-eye-fill"></i>
                                   </button>
@@ -1201,7 +1211,7 @@ export default function StudentsList() {
                                       style={{ backgroundColor: '#008080', color: '#fff', fontSize: 12 }}
                                       onClick={() => handleSendCredentials(s)}
                                       disabled={sendLoadingId === s.id}
-                                      title={`Send username & password to ${s.email}`}
+                                      title={`Send login email & password to ${s.email}`}
                                     >
                                       {sendLoadingId === s.id
                                         ? <span className="spinner-border spinner-border-sm"></span>

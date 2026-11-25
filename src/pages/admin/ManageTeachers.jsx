@@ -68,7 +68,7 @@ function CreateTeacherModal({ onClose, onSuccess }) {
         </div>
 
         <div className="mb-3">
-          <label className="form-label fw-medium small">Email Address <span style={{ color: '#777', fontSize: 11 }}>(will be used as username)</span></label>
+          <label className="form-label fw-medium small">Email Address <span style={{ color: '#777', fontSize: 11 }}>(used to log in)</span></label>
           <input name="email" type="email" className="form-control rounded-3" placeholder="teacher@gmail.com" value={form.email} onChange={handleChange} />
         </div>
         <div className="mb-3">
@@ -128,14 +128,46 @@ function AccountCreatedModal({ teacher, onClose, onSendNow }) {
 }
 
 // ─── Archive Modal (replaces permanent delete) ────────────────────────────────
+// The reason is emailed to the teacher and shown in the Archived tab, so each
+// preset fills in a full explanation instead of a single word. The admin can
+// edit it before sending (e.g. add a date or a note).
+const SCHOOL_NAME = 'Urdaneta City SPED Center';
+const ARCHIVE_PRESETS = [
+  {
+    label: 'Resigned',
+    text: `You have resigned from your teaching position at ${SCHOOL_NAME}, so your SignVibe teacher account has been archived. Thank you for your time and dedication to our learners.`,
+  },
+  {
+    label: 'Retired',
+    text: `You have retired from teaching at ${SCHOOL_NAME}, so your SignVibe teacher account has been archived. Thank you for your years of service to our learners, and we wish you a happy retirement.`,
+  },
+  {
+    label: 'Transferred to another school',
+    text: `You have been transferred to another school, so your SignVibe teacher account for ${SCHOOL_NAME} has been archived. Thank you for your service, and best wishes at your new school.`,
+  },
+  {
+    label: 'On extended leave',
+    text: `You are on an extended leave of absence, so your SignVibe teacher account has been archived for now. It can be restored when you return to ${SCHOOL_NAME} — just let the admin know.`,
+  },
+  {
+    label: 'Duplicate account',
+    text: 'This SignVibe teacher account was created twice by mistake, so this copy has been archived. Please keep using your other SignVibe account to log in.',
+  },
+];
+// A typed reason must be at least a short sentence, not a single word.
+const MIN_REASON_LENGTH = 20;
+
 function ArchiveModal({ teacher, onClose, onConfirm, loading }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
-  const presets = ['Resigned', 'Retired', 'Transferred to another school', 'On extended leave', 'Duplicate account'];
 
   const handleConfirm = () => {
     const trimmed = reason.trim();
     if (!trimmed) { setError('Please give a reason — it will be emailed to the teacher.'); return; }
+    if (trimmed.length < MIN_REASON_LENGTH) {
+      setError('Please add a few more details (at least a short sentence) so the teacher understands why.');
+      return;
+    }
     setError('');
     onConfirm(trimmed);
   };
@@ -158,24 +190,24 @@ function ArchiveModal({ teacher, onClose, onConfirm, loading }) {
         <div className="mb-3">
           <label className="form-label fw-medium small mb-1">Reason for archiving</label>
           <div className="d-flex flex-wrap gap-1 mb-2">
-            {presets.map((p) => (
+            {ARCHIVE_PRESETS.map((p) => (
               <button
-                key={p}
+                key={p.label}
                 type="button"
                 className="btn btn-sm rounded-pill"
-                style={{ fontSize: 12, backgroundColor: reason === p ? '#d97706' : '#fff3e0', color: reason === p ? '#fff' : '#9a5b05', border: 'none' }}
-                onClick={() => { setReason(p); setError(''); }}
+                style={{ fontSize: 12, backgroundColor: reason === p.text ? '#d97706' : '#fff3e0', color: reason === p.text ? '#fff' : '#9a5b05', border: 'none' }}
+                onClick={() => { setReason(p.text); setError(''); }}
                 disabled={loading}
               >
-                {p}
+                {p.label}
               </button>
             ))}
           </div>
           <textarea
             className={`form-control rounded-3 ${error ? 'is-invalid' : ''}`}
-            rows={3}
+            rows={4}
             maxLength={500}
-            placeholder="Pick one above or write your own message…"
+            placeholder="Pick a reason above to fill in a message you can edit, or write your own — e.g. what happened and when."
             value={reason}
             onChange={(e) => { setReason(e.target.value); if (error) setError(''); }}
             disabled={loading}
@@ -388,7 +420,7 @@ export default function ManageTeachers() {
     setSendLoadingId(teacher.id);
     try {
       await doSendCredentials(teacher.id);
-      setToast({ type: 'success', message: 'Credentials sent!', sub: `Username & password emailed to ${teacher.email}` });
+      setToast({ type: 'success', message: 'Credentials sent!', sub: `Login email & password sent to ${teacher.email}` });
     } catch (err) {
       setToast({ type: 'error', message: 'Send failed', sub: err.message });
     } finally { setSendLoadingId(null); }
@@ -542,7 +574,7 @@ export default function ManageTeachers() {
                       <tr>
                         <th className="ps-4 py-3">#</th>
                         <th>Name</th>
-                        <th>Email / Username</th>
+                        <th>Email</th>
                         <th>Employee No.</th>
                         <th>Status</th>
                         <th className="pe-4 text-end">Actions</th>
@@ -568,7 +600,11 @@ export default function ManageTeachers() {
                                 <div>
                                   <span className="fw-medium">{displayName(t)}</span>
                                   {view === 'archived' && t.archive_reason && (
-                                    <div className="small" style={{ color: '#9a5b05', maxWidth: 320, whiteSpace: 'pre-line' }} title="Reason for archiving">
+                                    <div
+                                      className="small"
+                                      style={{ color: '#9a5b05', maxWidth: 360, whiteSpace: 'pre-line', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                                      title={t.archive_reason}
+                                    >
                                       <i className="bi bi-archive me-1"></i>{t.archive_reason}
                                     </div>
                                   )}
@@ -596,7 +632,7 @@ export default function ManageTeachers() {
                               <div className="d-flex justify-content-end gap-1 flex-wrap">
                                 {view === 'active' ? (
                                   <>
-                                    <button className="btn btn-sm rounded-3 fw-medium d-flex align-items-center gap-1" style={{ backgroundColor: '#008080', color: '#fff', fontSize: 12 }} onClick={() => handleSendCredentials(t)} disabled={sendLoadingId === t.id} title="Send username & password to Gmail">
+                                    <button className="btn btn-sm rounded-3 fw-medium d-flex align-items-center gap-1" style={{ backgroundColor: '#008080', color: '#fff', fontSize: 12 }} onClick={() => handleSendCredentials(t)} disabled={sendLoadingId === t.id} title="Send login email & password to Gmail">
                                       {sendLoadingId === t.id ? <span className="spinner-border spinner-border-sm"></span> : <><i className="bi bi-envelope-fill"></i><span>Send</span></>}
                                     </button>
                                     <button className="btn btn-sm rounded-3" style={{ backgroundColor: '#fff3e0', color: '#d97706' }} onClick={() => setArchiveTarget(t)} title="Archive teacher">

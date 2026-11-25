@@ -16,6 +16,9 @@ import {
   getSchoolYear,
 } from '../services/enrollmentService.js';
 
+// Parent / guardian name shown on the student's details page.
+const MAX_PARENT_NAME = 100;
+
 // Archive reasons are emailed and shown in the Archived tab — keep them short.
 const MAX_ARCHIVE_REASON = 500;
 
@@ -73,12 +76,16 @@ function buildFullName(first_name, middle_name, last_name) {
 export const createStudent = async (req, res) => {
   const { first_name, middle_name, last_name, grade_level, parent_contact, school_year_id } = req.body;
   const email = normalizeEmail(req.body.email);
+  const parentName = String(req.body.parent_name || '').trim();
 
-  if (!first_name || !last_name || !email || !grade_level || !parent_contact) {
+  if (!first_name || !last_name || !email || !grade_level || !parent_contact || !parentName) {
     return res.status(400).json({
       success: false,
-      message: 'first_name, last_name, email, grade_level, and parent_contact are required.',
+      message: "First name, last name, email, grade level, and the parent's name and contact number are required.",
     });
+  }
+  if (parentName.length > MAX_PARENT_NAME) {
+    return res.status(400).json({ success: false, message: `Keep the parent's name under ${MAX_PARENT_NAME} characters.` });
   }
   if (!isValidEmail(email)) {
     return res.status(400).json({ success: false, message: INVALID_EMAIL_MESSAGE });
@@ -112,6 +119,7 @@ export const createStudent = async (req, res) => {
       role: 'student',
       status: 'active',
       grade_level: String(grade_level),
+      parent_name: parentName,
       parent_contact: parentContact,
       lessons_completed: 0,
       total_points: 0,
@@ -158,7 +166,7 @@ export const createStudent = async (req, res) => {
 };
 
 // ─── PATCH /api/students/:uid — Edit Student Information ─────────────────────
-// Name, email (their login), grade level and parent's contact number.
+// Name, email (their login), grade level, and the parent's name and contact number.
 // Changing the email also changes the Firebase login. A grade change applies
 // to the ACTIVE school year and is written to that year's enrollment too.
 export const updateStudent = async (req, res) => {
@@ -169,6 +177,12 @@ export const updateStudent = async (req, res) => {
   const last_name = String(body.last_name || '').trim();
   const email = normalizeEmail(body.email);
   const grade = parseInt(body.grade_level, 10);
+  // Optional here so students added before this field existed can still be
+  // edited; when sent, it replaces the stored name.
+  const parentName = body.parent_name === undefined ? undefined : String(body.parent_name || '').trim();
+  if (parentName && parentName.length > MAX_PARENT_NAME) {
+    return res.status(400).json({ success: false, message: `Keep the parent's name under ${MAX_PARENT_NAME} characters.` });
+  }
 
   if (!first_name || !last_name || !email || !body.grade_level || !body.parent_contact) {
     return res.status(400).json({ success: false, message: 'First name, last name, email, grade level and parent\'s contact are required.' });
@@ -212,6 +226,7 @@ export const updateStudent = async (req, res) => {
       first_name, middle_name, last_name, full_name, email,
       grade_level: String(grade),
       parent_contact: parentContact,
+      ...(parentName !== undefined ? { parent_name: parentName } : {}),
       updated_at: new Date().toISOString(),
     }, { merge: true });
 
@@ -316,7 +331,7 @@ export const restoreStudent = async (req, res) => {
 };
 
 // ─── POST /api/students/:uid/send-credentials ─────────────────────────────────
-// Admin manually sends username + password to student's Gmail
+// Admin manually sends the login email + password to the student's Gmail
 export const sendStudentCredentialsEmail = async (req, res) => {
   const { uid } = req.params;
   try {
@@ -345,7 +360,7 @@ export const sendStudentCredentialsEmail = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Username and password sent to ${email} successfully.`,
+      message: `Login email and password sent to ${email} successfully.`,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

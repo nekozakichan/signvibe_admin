@@ -19,7 +19,7 @@ function getTransporter() {
   return transporter;
 }
 
-// ─── Send Student Username + Password ────────────────────────────────────────
+// ─── Send Student Login Email + Password ─────────────────────────────────────
 export const sendStudentCredentials = async ({
   full_name, email, password, grade_level,
 }) => {
@@ -70,7 +70,7 @@ export const sendStudentCredentials = async ({
   });
 };
 
-// ─── Send Teacher Username + Password ────────────────────────────────────────
+// ─── Send Teacher Login Email + Password ─────────────────────────────────────
 export const sendTeacherCredentials = async ({
   full_name, email, password, employee_no,
 }) => {

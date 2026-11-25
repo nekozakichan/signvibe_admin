@@ -4,6 +4,9 @@ import { db } from '../../api/firebase';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import Sidebar from '../../components/Sidebar';
 import Navbar from '../../components/Navbar';
+import { getActiveSchoolYear } from '../../config/schoolYears';
+import { statusInfo } from '../../config/enrollments';
+import { formatPhMobile } from '../../utils/phone';
 import { Doughnut, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS, ArcElement, CategoryScale,
@@ -11,6 +14,26 @@ import {
 } from 'chart.js';
 
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Tooltip, Legend);
+
+// "Nov 25, 2026" from an ISO string or a Firestore Timestamp; '—' if missing.
+const fmtDate = (value) => {
+  if (!value) return '—';
+  const d = value.seconds ? new Date(value.seconds * 1000) : new Date(value);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+// One label/value line in the details cards.
+function DetailRow({ icon, label, children }) {
+  return (
+    <div className="d-flex align-items-start gap-3 py-2 border-bottom" style={{ borderColor: '#f0f0f0' }}>
+      <i className={`bi ${icon} mt-1`} style={{ color: '#00838A', width: 16 }}></i>
+      <div className="flex-grow-1" style={{ minWidth: 0 }}>
+        <div className="small" style={{ color: '#777' }}>{label}</div>
+        <div className="fw-medium text-break">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 // mm:ss-ish formatter for durations expressed in whole seconds.
 const fmtTime = (s) =>
@@ -20,6 +43,8 @@ export default function StudentProgress() {
   const { studentId } = useParams();
   const navigate = useNavigate();
   const [student, setStudent] = useState(null);
+  const [schoolYear, setSchoolYear] = useState(null);   // active school year
+  const [enrollment, setEnrollment] = useState(null);   // this student's enrollment in it
   const [progress, setProgress] = useState([]);
   const [totalLessons, setTotalLessons] = useState(0);
   const [lessonMap, setLessonMap] = useState({});
@@ -34,6 +59,18 @@ export default function StudentProgress() {
       // Student info
       const studentDoc = await getDoc(doc(db, 'users', studentId));
       if (studentDoc.exists()) setStudent(studentDoc.data());
+
+      // Enrollment in the current school year (grade and status for this year).
+      try {
+        const year = await getActiveSchoolYear();
+        setSchoolYear(year);
+        if (year) {
+          const eDoc = await getDoc(doc(db, 'enrollments', `${year.id}_${studentId}`));
+          setEnrollment(eDoc.exists() ? eDoc.data() : null);
+        }
+      } catch (err) {
+        console.error('Could not load enrollment:', err);
+      }
 
       // Progress (completed-lesson docs for this student)
       const progressSnap = await getDocs(
@@ -238,7 +275,7 @@ export default function StudentProgress() {
     <div className="d-flex">
       <Sidebar />
       <div className="sv-shell">
-        <Navbar title="Student Progress" />
+        <Navbar title="Student Details & Progress" />
 
         <div className="p-4 sv-page">
           {/* Back button + student name */}
@@ -252,8 +289,64 @@ export default function StudentProgress() {
             <div>
               <h6 className="fw-semibold mb-0">{student?.full_name}</h6>
               <small className="text-muted">
-                Grade {student?.grade_level}
+                Grade {enrollment?.grade_level || student?.grade_level}
               </small>
+            </div>
+          </div>
+
+          {/* Student & parent details */}
+          <div className="row g-3 mb-4">
+            <div className="col-lg-6">
+              <div className="card border-0 shadow-sm rounded-4 h-100">
+                <div className="card-body p-4">
+                  <h6 className="fw-semibold mb-2"><i className="bi bi-person-vcard me-2" style={{ color: '#00838A' }}></i>Student Information</h6>
+                  <DetailRow icon="bi-envelope" label="Email">{student?.email || '—'}</DetailRow>
+                  <DetailRow icon="bi-mortarboard" label={schoolYear ? `Grade Level (S.Y. ${schoolYear.schoolYear})` : 'Grade Level'}>
+                    Grade {enrollment?.grade_level || student?.grade_level || '—'}
+                  </DetailRow>
+                  <DetailRow icon="bi-clipboard-check" label="Enrollment Status">
+                    {student?.status === 'archived' ? (
+                      <span className="badge rounded-pill" style={{ backgroundColor: '#fff3e0', color: '#92400e' }}>
+                        <i className="bi bi-archive-fill me-1"></i>Account archived
+                      </span>
+                    ) : enrollment ? (
+                      <span className="badge rounded-pill" style={{ backgroundColor: statusInfo(enrollment.status).bg, color: statusInfo(enrollment.status).color }}>
+                        {statusInfo(enrollment.status).label}{schoolYear ? ` · S.Y. ${schoolYear.schoolYear}` : ''}
+                      </span>
+                    ) : student?.graduated_school_year ? (
+                      <span className="badge rounded-pill" style={{ backgroundColor: '#6A1B9A18', color: '#6A1B9A' }}>Graduated · S.Y. {student.graduated_school_year}</span>
+                    ) : schoolYear ? (
+                      <span style={{ color: '#999' }}>Not enrolled in S.Y. {schoolYear.schoolYear}</span>
+                    ) : (
+                      <span style={{ color: '#999' }}>—</span>
+                    )}
+                  </DetailRow>
+                  <DetailRow icon="bi-calendar-plus" label="Account Created">{fmtDate(student?.created_at)}</DetailRow>
+                </div>
+              </div>
+            </div>
+            <div className="col-lg-6">
+              <div className="card border-0 shadow-sm rounded-4 h-100">
+                <div className="card-body p-4">
+                  <h6 className="fw-semibold mb-2"><i className="bi bi-people-fill me-2" style={{ color: '#00838A' }}></i>Parent / Guardian</h6>
+                  <DetailRow icon="bi-person-hearts" label="Name">
+                    {student?.parent_name || <span style={{ color: '#999', fontWeight: 400 }}>Not set — add it with Edit in the Students List</span>}
+                  </DetailRow>
+                  <DetailRow icon="bi-telephone" label="Contact Number">
+                    {student?.parent_contact ? formatPhMobile(student.parent_contact) : <span style={{ color: '#999', fontWeight: 400 }}>—</span>}
+                  </DetailRow>
+                  {student?.parent_contact && (
+                    <div className="d-flex gap-2 mt-3 flex-wrap">
+                      <a href={`tel:${student.parent_contact}`} className="btn btn-sm rounded-3 text-white" style={{ backgroundColor: '#00838A' }}>
+                        <i className="bi bi-telephone-fill me-1"></i>Call
+                      </a>
+                      <a href={`sms:${student.parent_contact}`} className="btn btn-sm btn-outline-secondary rounded-3">
+                        <i className="bi bi-chat-dots-fill me-1"></i>Text
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
